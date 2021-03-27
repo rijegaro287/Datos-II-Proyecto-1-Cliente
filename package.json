@@ -1,0 +1,24 @@
+{
+    "name": "Datos-II-Proyecto-1-Cliente",
+    "version": "1.0.0",
+    "description": "Datos-II-Proyecto-1-Cliente",
+    "main": "src/index.js",
+    "scripts": {
+        "start": "electron src/index.js"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/rijegaro287/Datos-II-Proyecto-1-Cliente.git"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "bugs": {
+        "url": "https://github.com/rijegaro287/Datos-II-Proyecto-1-Cliente/issues"
+    },
+    "homepage": "https://github.com/rijegaro287/Datos-II-Proyecto-1-Cliente#readme",
+    "dependencies": {
+        "electron": "^12.0.2",
+        "electron-reload": "^1.5.0"
+    }
+}
