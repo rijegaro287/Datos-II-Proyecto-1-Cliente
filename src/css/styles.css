@@ -1,0 +1,73 @@
+html {
+    font-size: 62.5%;
+}
+
+body {
+    font-size: 1.6rem;
+}
+
+.contenedor {
+    margin: auto auto;
+}
+
+.grid {
+    display: grid;
+    height: minmax(0, 100%);
+    width: minmax(0, 100%);
+}
+
+.grid--2-cols {
+    grid-template-columns: 75% 25%;
+}
+
+.run-btn {
+    background-color: green;
+    color: white;
+    border: none;
+    border-right: oldlace solid 0.1px;
+}
+
+.run-btn:focus {
+    outline: none;
+}
+
+.ram-live-view--titulo {
+    height: 5vh;
+    width: 100%;
+    line-height: 5vh;
+    text-align: center;
+    margin: 0;
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+}
+
+.editor-area {
+    height: 65vh;
+}
+
+.editor {
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    resize: none;
+    box-sizing: border-box;
+    height: 100%;
+    width: 100%;
+    border: oldlace solid 0.1px;
+}
+
+.editor:focus {
+    outline: none;
+}
+
+.ram-live-view--lista {
+    background-color: rgba(0, 0, 0, 0.8);
+    box-sizing: border-box;
+    border-top: oldlace solid 0.1px;
+    border-bottom: oldlace solid 0.1px;
+}
+
+.output {
+    background-color: rgba(0, 0, 0, 0.8);
+    grid-column: 1 / 3;
+    height: 30vh;
+}
