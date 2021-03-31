@@ -50,12 +50,20 @@ class double extends tipoDeDato {
     }
 }
 
+let valoresReservados = ['int', 'long', 'char', 'float', 'double'];
+let variablesActivas = [];
+
 runButton.addEventListener('click', e => {
     e.preventDefault();
-    console.log(procesarTexto(editorTextArea.value, 0));
+    procesarTexto(editorTextArea.value, 0);
+    console.log(variablesActivas);
 });
 
 procesarTexto = (texto, posicionInicial) => {
+    if (posicionInicial === texto.length) {
+        return;
+    }
+
     let palabra = ''
     let informacion = [];
     let operadorIgualEncontrado = false;
@@ -65,39 +73,61 @@ procesarTexto = (texto, posicionInicial) => {
 
         if (caracter === ';') {
             informacion.push(palabra);
-            return crearVariable(informacion);
+            try {
+                crearVariable(informacion);
+            } catch (error) {
+                variablesActivas = [];
+                throw error;
+            }
+            return procesarTexto(texto, i + 1);
         } else if (caracter === '=') {
             informacion.push('=');
             operadorIgualEncontrado = true;
         } else if (caracter === ' ' && !operadorIgualEncontrado) {
             informacion.push(palabra);
             palabra = '';
-        } else {
+        } else if (caracter !== '\n') {
             palabra += caracter;
         }
     }
 
-    console.log('Error: falta ";"');
+    throw 'Error: falta ";"';
 }
 
-crearVariable = informacion => {
+crearVariable = (informacion) => {
     informacion = removerTodasLasOcurrencias(informacion, '');
 
-    console.log(informacion);
-
-    let variable = null;
     const tipoDeVariable = informacion[0];
     const nombreDeVariable = informacion[1];
-    let valorDeVariable = null;
+    let valorDeVariable = informacion[3];
 
     if (informacion[2] !== '=') {
-        return 'Variable mal declarada';
-    } else {
-        try {
-            valorDeVariable = math.evaluate(informacion[3]);
-        } catch (error) {
-            return ('Variable mal declarada');
-        }
+        throw 'Variable mal declarada';
+    }
+    if (valoresReservados.includes(nombreDeVariable)) {
+        throw 'Error: nombre de la variable no puede ser un valor reservado';
+    }
+
+    switch (tipoDeVariable) {
+        case 'char':
+            return crearChar(nombreDeVariable, valorDeVariable);
+        case 'struct':
+            break;
+        case 'reference':
+            break;
+        default:
+            return crearNumero(tipoDeVariable, nombreDeVariable, valorDeVariable);
+
+    }
+}
+
+crearNumero = (tipoDeVariable, nombreDeVariable, valorDeVariable) => {
+    let variable = null;
+
+    try {
+        valorDeVariable = math.evaluate(valorDeVariable);
+    } catch (error) {
+        throw 'Variable mal declarada';
     }
 
     switch (tipoDeVariable) {
@@ -107,9 +137,6 @@ crearVariable = informacion => {
         case 'long':
             variable = new long(math.round(valorDeVariable), nombreDeVariable);
             break;
-        case 'char':
-            variable = new char(valorDeVariable, nombreDeVariable);
-            break;
         case 'float':
             variable = new float(valorDeVariable, nombreDeVariable);
             break;
@@ -117,9 +144,27 @@ crearVariable = informacion => {
             variable = new double(valorDeVariable, nombreDeVariable);
             break;
         default:
-            console.log('tipo de dato inválido');
-            break;
+            throw 'Tipo de dato inválido';
     }
+
+    variablesActivas.push(variable);
+    return variable;
+}
+
+crearChar = (nombreDeVariable, valorDeVariable) => {
+    let variable = null;
+
+    valorDeVariable = [...valorDeVariable];
+    removerTodasLasOcurrencias(valorDeVariable, ' ');
+    if (valorDeVariable[0] !== '"' || valorDeVariable[valorDeVariable.length - 1] !== '"') {
+        throw 'Error: los char deben ir entre comillas';
+    } else if (valorDeVariable.length !== 3) {
+        throw 'Error: los char solo pueden tener un caracter';
+    }
+
+    variable = new char(valorDeVariable[1], nombreDeVariable);
+
+    variablesActivas.push(variable);
 
     return variable;
 }
