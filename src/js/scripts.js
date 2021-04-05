@@ -65,6 +65,10 @@ class reference {
 class struct {
     constructor(variables) {
         this.variables = variables;
+        this.direccionDeMemoria = null;
+    }
+    getAddr() {
+        return this.direccionDeMemoria;
     }
 }
 
@@ -206,8 +210,7 @@ crearStruct = (informacion, texto, posicionInicial) => {
         throw 'Error: nombre de la variable no puede ser un valor reservado';
     }
     let variables = procesarStruct(texto, posicionInicial, []);
-    console.log(variables);
-
+    return new struct(variables);
 }
 
 procesarStruct = (texto, posicionInicial, variables) => {
