@@ -50,13 +50,29 @@ class double extends tipoDeDato {
     }
 }
 
-let valoresReservados = ['int', 'long', 'char', 'float', 'double'];
-let variablesActivas = [];
+class reference {
+    constructor(tipoDeDato, direccionDeMemoria, nombre) {
+        this.tipoDeDato = tipoDeDato;
+        this.direccionDeMemoria = direccionDeMemoria;
+        this.name = nombre;
+    }
+
+    getValue() {
+        return
+    }
+}
+
+class struct {
+    constructor(variables) {
+        this.variables = variables;
+    }
+}
+
+let valoresReservados = ['int', 'long', 'char', 'float', 'double', 'struct'];
 
 runButton.addEventListener('click', e => {
     e.preventDefault();
     procesarTexto(editorTextArea.value, 0);
-    console.log(variablesActivas);
 });
 
 procesarTexto = (texto, posicionInicial) => {
@@ -71,12 +87,18 @@ procesarTexto = (texto, posicionInicial) => {
     for (let i = posicionInicial; i < texto.length; i++) {
         const caracter = texto[i];
 
-        if (caracter === ';') {
+        if (caracter === '{' && informacion[0] === 'struct') {
+            try {
+                informacion.push(palabra);
+                return crearStruct(informacion, texto, i + 1);
+            } catch (error) {
+                throw error;
+            }
+        } else if (caracter === ';') {
             informacion.push(palabra);
             try {
                 crearVariable(informacion);
             } catch (error) {
-                variablesActivas = [];
                 throw error;
             }
             return procesarTexto(texto, i + 1);
@@ -90,7 +112,6 @@ procesarTexto = (texto, posicionInicial) => {
             palabra += caracter;
         }
     }
-
     throw 'Error: falta ";"';
 }
 
@@ -107,14 +128,13 @@ crearVariable = (informacion) => {
     if (valoresReservados.includes(nombreDeVariable)) {
         throw 'Error: nombre de la variable no puede ser un valor reservado';
     }
+    if (tipoDeVariable.split('<').includes('reference')) {
+        return crearReferencia(tipoDeVariable, nombreDeVariable, valorDeVariable);
+    }
 
     switch (tipoDeVariable) {
         case 'char':
             return crearChar(nombreDeVariable, valorDeVariable);
-        case 'struct':
-            break;
-        case 'reference':
-            break;
         default:
             return crearNumero(tipoDeVariable, nombreDeVariable, valorDeVariable);
 
@@ -146,8 +166,6 @@ crearNumero = (tipoDeVariable, nombreDeVariable, valorDeVariable) => {
         default:
             throw 'Tipo de dato inválido';
     }
-
-    variablesActivas.push(variable);
     return variable;
 }
 
@@ -161,12 +179,66 @@ crearChar = (nombreDeVariable, valorDeVariable) => {
     } else if (valorDeVariable.length !== 3) {
         throw 'Error: los char solo pueden tener un caracter';
     }
-
     variable = new char(valorDeVariable[1], nombreDeVariable);
-
-    variablesActivas.push(variable);
-
     return variable;
+}
+
+crearReferencia = (tipoDeVariable, nombreDeVariable, valorDeVariable) => {
+    let tipoDeDato = tipoDeVariable.split('reference');
+    removerTodasLasOcurrencias(tipoDeDato, '');
+    tipoDeDato = tipoDeDato[0];
+
+    if (tipoDeDato === undefined || tipoDeDato[0] !== '<' || tipoDeDato[tipoDeDato.length - 1] !== '>') {
+        throw 'Error: El tipo de dato de una referencia debe ir en entre flechas';
+    } else {
+        tipoDeDato = tipoDeDato.slice(1, tipoDeDato.length - 1);
+    }
+
+    const variable = new reference(tipoDeDato, valorDeVariable, nombreDeVariable);
+    console.log(variable);
+    return variable;
+}
+
+crearStruct = (informacion, texto, posicionInicial) => {
+    informacion = removerTodasLasOcurrencias(informacion, '');
+    const nombreDeVariable = informacion[1];
+    if (valoresReservados.includes(nombreDeVariable)) {
+        throw 'Error: nombre de la variable no puede ser un valor reservado';
+    }
+    let variables = procesarStruct(texto, posicionInicial, []);
+    console.log(variables);
+
+}
+
+procesarStruct = (texto, posicionInicial, variables) => {
+    let palabra = ''
+    let informacion = [];
+    let operadorIgualEncontrado = false;
+
+    for (let i = posicionInicial; i < texto.length; i++) {
+        const caracter = texto[i];
+
+        if (caracter === '}') {
+            return variables;
+        } else if (caracter === ';') {
+            informacion.push(palabra);
+            try {
+                variables.push(crearVariable(informacion));
+            } catch (error) {
+                throw error;
+            }
+            return procesarStruct(texto, i + 1, variables);
+        } else if (caracter === '=') {
+            informacion.push('=');
+            operadorIgualEncontrado = true;
+        } else if (caracter === ' ' && !operadorIgualEncontrado) {
+            informacion.push(palabra);
+            palabra = '';
+        } else if (caracter !== '\n') {
+            palabra += caracter;
+        }
+    }
+    throw 'Error: falta "}"';
 }
 
 removerTodasLasOcurrencias = (array, valor) => {
