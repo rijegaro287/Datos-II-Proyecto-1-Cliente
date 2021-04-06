@@ -16,19 +16,39 @@ body {
     width: minmax(0, 100%);
 }
 
-.grid--2-cols {
+.grid--2-cols--75-25 {
     grid-template-columns: 75% 25%;
+}
+
+.btn {
+    background-color: green;
+    color: white;
+    border: none;
 }
 
 .run-btn {
     background-color: green;
-    color: white;
-    border: none;
     border-right: oldlace solid 0.1px;
 }
 
 .run-btn:focus {
     outline: none;
+}
+
+#running-btns {
+    display: none;
+}
+
+.stop-btn {
+    background-color: red;
+    flex: 0 0 50%;
+    border-right: oldlace solid 0.1px;
+}
+
+.next-btn {
+    background-color: green;
+    flex: 0 0 50%;
+    border-right: oldlace solid 0.1px;
 }
 
 .ram-live-view--titulo {

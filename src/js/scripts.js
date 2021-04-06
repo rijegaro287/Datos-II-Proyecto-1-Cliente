@@ -1,12 +1,15 @@
 const math = require('mathjs');
 
 const runButton = document.querySelector('#run-btn');
+const runningButtons = document.querySelector('#running-btns');
+const stopButton = document.querySelector('#stop-btn');
+const nextButton = document.querySelector('#next-btn');
 const editorTextArea = document.querySelector('#editor-text-area');
 
 class tipoDeDato {
     constructor(valor, nombre) {
         this.valor = valor;
-        this.name = nombre;
+        this.nombre = nombre;
         this.direccionDeMemoria = null;
     }
 
@@ -54,7 +57,7 @@ class reference {
     constructor(tipoDeDato, direccionDeMemoria, nombre) {
         this.tipoDeDato = tipoDeDato;
         this.direccionDeMemoria = direccionDeMemoria;
-        this.name = nombre;
+        this.nombre = nombre;
     }
 
     getValue() {
@@ -73,14 +76,49 @@ class struct {
 }
 
 let valoresReservados = ['int', 'long', 'char', 'float', 'double', 'struct'];
+let posicionEnTexto = 0;
+let nextButtonClicked = false;
+let creando = 'variables';
+let variablesEnStruct = [];
 
 runButton.addEventListener('click', e => {
     e.preventDefault();
-    procesarTexto(editorTextArea.value, 0);
+    runButton.style.display = 'none';
+    runningButtons.style.display = 'flex';
+    procesarTexto(editorTextArea.value, posicionEnTexto);
 });
 
+stopButton.addEventListener('click', e => {
+    e.preventDefault();
+    detenerEjecucion();
+});
+
+nextButton.addEventListener('click', async e => {
+    if (!nextButtonClicked) {
+        e.preventDefault();
+        nextButtonClicked = true;
+        switch (creando) {
+            case 'variables':
+                procesarTexto(editorTextArea.value, posicionEnTexto + 1);
+            case 'struct':
+                procesarStruct(editorTextArea.value, posicionEnTexto + 1);
+        }
+        nextButtonClicked = false;
+    }
+});
+
+detenerEjecucion = () => {
+    runningButtons.style.display = 'none';
+    runButton.style.display = 'block';
+    posicionEnTexto = 0;
+    nextButtonClicked = false;
+    variablesEnStruct = [];
+}
+
 procesarTexto = (texto, posicionInicial) => {
+    creando = 'variables';
     if (posicionInicial === texto.length) {
+        detenerEjecucion();
         return;
     }
 
@@ -89,23 +127,27 @@ procesarTexto = (texto, posicionInicial) => {
     let operadorIgualEncontrado = false;
 
     for (let i = posicionInicial; i < texto.length; i++) {
+        posicionEnTexto = i;
         const caracter = texto[i];
 
         if (caracter === '{' && informacion[0] === 'struct') {
             try {
                 informacion.push(palabra);
-                return crearStruct(informacion, texto, i + 1);
+                crearStruct(informacion, texto, i + 1);
+                return;
             } catch (error) {
+                detenerEjecucion();
                 throw error;
             }
         } else if (caracter === ';') {
             informacion.push(palabra);
             try {
-                crearVariable(informacion);
+                console.log(crearVariable(informacion));
             } catch (error) {
+                detenerEjecucion();
                 throw error;
             }
-            return procesarTexto(texto, i + 1);
+            return;
         } else if (caracter === '=') {
             informacion.push('=');
             operadorIgualEncontrado = true;
@@ -116,6 +158,7 @@ procesarTexto = (texto, posicionInicial) => {
             palabra += caracter;
         }
     }
+    detenerEjecucion();
     throw 'Error: falta ";"';
 }
 
@@ -199,38 +242,42 @@ crearReferencia = (tipoDeVariable, nombreDeVariable, valorDeVariable) => {
     }
 
     const variable = new reference(tipoDeDato, valorDeVariable, nombreDeVariable);
-    console.log(variable);
     return variable;
 }
 
 crearStruct = (informacion, texto, posicionInicial) => {
+    creando = 'struct';
     informacion = removerTodasLasOcurrencias(informacion, '');
     const nombreDeVariable = informacion[1];
     if (valoresReservados.includes(nombreDeVariable)) {
         throw 'Error: nombre de la variable no puede ser un valor reservado';
     }
-    let variables = procesarStruct(texto, posicionInicial, []);
-    return new struct(variables);
+    procesarStruct(texto, posicionInicial);
 }
 
-procesarStruct = (texto, posicionInicial, variables) => {
+procesarStruct = (texto, posicionInicial) => {
     let palabra = ''
     let informacion = [];
     let operadorIgualEncontrado = false;
 
     for (let i = posicionInicial; i < texto.length; i++) {
         const caracter = texto[i];
+        posicionEnTexto = i;
 
         if (caracter === '}') {
-            return variables;
+            console.log(new struct(variablesEnStruct));
+            detenerEjecucion();
+            return;
         } else if (caracter === ';') {
             informacion.push(palabra);
             try {
-                variables.push(crearVariable(informacion));
+                variablesEnStruct.push(crearVariable(informacion));
+                console.log(variablesEnStruct);
+                return;
             } catch (error) {
+                detenerEjecucion();
                 throw error;
             }
-            return procesarStruct(texto, i + 1, variables);
         } else if (caracter === '=') {
             informacion.push('=');
             operadorIgualEncontrado = true;
@@ -241,6 +288,7 @@ procesarStruct = (texto, posicionInicial, variables) => {
             palabra += caracter;
         }
     }
+    detenerEjecucion();
     throw 'Error: falta "}"';
 }
 
