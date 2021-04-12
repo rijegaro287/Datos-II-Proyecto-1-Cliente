@@ -100,8 +100,10 @@ nextButton.addEventListener('click', async e => {
         switch (creando) {
             case 'variables':
                 procesarTexto(editorTextArea.value, posicionEnTexto + 1);
+                break;
             case 'struct':
                 procesarStruct(editorTextArea.value, posicionEnTexto + 1);
+                break;
         }
         nextButtonClicked = false;
     }
@@ -266,7 +268,8 @@ procesarStruct = (texto, posicionInicial) => {
 
         if (caracter === '}') {
             console.log(new struct(variablesEnStruct));
-            detenerEjecucion();
+            // detenerEjecucion();
+            creando = 'variables';
             return;
         } else if (caracter === ';') {
             informacion.push(palabra);
@@ -302,4 +305,22 @@ removerTodasLasOcurrencias = (array, valor) => {
         }
     }
     return array;
+}
+
+const post = async(url = '', data = {}) => {
+    let respuestaProcesada;
+    const respuestaSinProcesar = await fetch(url, {
+            method: 'POST',
+            mode: 'cors',
+            cache: 'no-cache',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            redirect: 'follow',
+            referrerPolicy: 'no-referrer',
+            body: JSON.stringify(data)
+        })
+        .then(response => response.text())
+        .then(body => console.log(body));
 }
