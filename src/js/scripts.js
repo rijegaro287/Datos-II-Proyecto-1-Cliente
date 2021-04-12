@@ -1,11 +1,5 @@
 const math = require('mathjs');
 
-const runButton = document.querySelector('#run-btn');
-const runningButtons = document.querySelector('#running-btns');
-const stopButton = document.querySelector('#stop-btn');
-const nextButton = document.querySelector('#next-btn');
-const editorTextArea = document.querySelector('#editor-text-area');
-
 class tipoDeDato {
     constructor(valor, nombre) {
         this.valor = valor;
@@ -22,6 +16,7 @@ class int extends tipoDeDato {
     constructor(valor, nombre) {
         super(valor, nombre);
         this.espacioEnMemoria = 4;
+        this.tipoDeDato = 'int';
     }
 }
 
@@ -29,6 +24,7 @@ class long extends tipoDeDato {
     constructor(valor, nombre) {
         super(valor, nombre);
         this.espacioEnMemoria = 8;
+        this.tipoDeDato = 'long';
     }
 }
 
@@ -36,6 +32,7 @@ class char extends tipoDeDato {
     constructor(valor, nombre) {
         super(valor, nombre);
         this.espacioEnMemoria = 1;
+        this.tipoDeDato = 'char';
     }
 }
 
@@ -43,6 +40,7 @@ class float extends tipoDeDato {
     constructor(valor, nombre) {
         super(valor, nombre);
         this.espacioEnMemoria = 4;
+        this.tipoDeDato = 'float';
     }
 }
 
@@ -50,12 +48,13 @@ class double extends tipoDeDato {
     constructor(valor, nombre) {
         super(valor, nombre);
         this.espacioEnMemoria = 8;
+        this.tipoDeDato = 'double';
     }
 }
 
 class reference {
-    constructor(tipoDeDato, direccionDeMemoria, nombre) {
-        this.tipoDeDato = tipoDeDato;
+    constructor(tipoDeReferencia, direccionDeMemoria, nombre) {
+        this.tipoDeReferencia = tipoDeReferencia;
         this.direccionDeMemoria = direccionDeMemoria;
         this.nombre = nombre;
     }
@@ -75,17 +74,27 @@ class struct {
     }
 }
 
+const runButton = document.querySelector('#run-btn');
+const runningButtons = document.querySelector('#running-btns');
+const stopButton = document.querySelector('#stop-btn');
+const nextButton = document.querySelector('#next-btn');
+const editorTextArea = document.querySelector('#editor-text-area');
+
 let valoresReservados = ['int', 'long', 'char', 'float', 'double', 'struct'];
 let posicionEnTexto = 0;
 let nextButtonClicked = false;
 let creando = 'variables';
 let variablesEnStruct = [];
 
+const serverURL = 'http://localhost:8080';
+
 runButton.addEventListener('click', e => {
     e.preventDefault();
     runButton.style.display = 'none';
     runningButtons.style.display = 'flex';
-    procesarTexto(editorTextArea.value, posicionEnTexto);
+    const variable = procesarTexto(editorTextArea.value, posicionEnTexto);
+    console.log(variable);
+    post(`${serverURL}/crearVariable`, variable);
 });
 
 stopButton.addEventListener('click', e => {
@@ -97,13 +106,18 @@ nextButton.addEventListener('click', async e => {
     if (!nextButtonClicked) {
         e.preventDefault();
         nextButtonClicked = true;
+        let variable;
         switch (creando) {
             case 'variables':
-                procesarTexto(editorTextArea.value, posicionEnTexto + 1);
+                variable = procesarTexto(editorTextArea.value, posicionEnTexto + 1);
                 break;
             case 'struct':
-                procesarStruct(editorTextArea.value, posicionEnTexto + 1);
+                variable = procesarStruct(editorTextArea.value, posicionEnTexto + 1);
                 break;
+        }
+        if (variable !== undefined) {
+            console.log(variable);
+            post(`${serverURL}/crearVariable`, variable);
         }
         nextButtonClicked = false;
     }
@@ -135,8 +149,7 @@ procesarTexto = (texto, posicionInicial) => {
         if (caracter === '{' && informacion[0] === 'struct') {
             try {
                 informacion.push(palabra);
-                crearStruct(informacion, texto, i + 1);
-                return;
+                return crearStruct(informacion, texto, i + 1);
             } catch (error) {
                 detenerEjecucion();
                 throw error;
@@ -144,12 +157,11 @@ procesarTexto = (texto, posicionInicial) => {
         } else if (caracter === ';') {
             informacion.push(palabra);
             try {
-                console.log(crearVariable(informacion));
+                return crearVariable(informacion);
             } catch (error) {
                 detenerEjecucion();
                 throw error;
             }
-            return;
         } else if (caracter === '=') {
             informacion.push('=');
             operadorIgualEncontrado = true;
@@ -254,7 +266,7 @@ crearStruct = (informacion, texto, posicionInicial) => {
     if (valoresReservados.includes(nombreDeVariable)) {
         throw 'Error: nombre de la variable no puede ser un valor reservado';
     }
-    procesarStruct(texto, posicionInicial);
+    return procesarStruct(texto, posicionInicial);
 }
 
 procesarStruct = (texto, posicionInicial) => {
@@ -267,10 +279,8 @@ procesarStruct = (texto, posicionInicial) => {
         posicionEnTexto = i;
 
         if (caracter === '}') {
-            console.log(new struct(variablesEnStruct));
-            // detenerEjecucion();
             creando = 'variables';
-            return;
+            return new struct(variablesEnStruct);
         } else if (caracter === ';') {
             informacion.push(palabra);
             try {
