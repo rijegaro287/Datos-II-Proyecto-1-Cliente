@@ -79,6 +79,11 @@ const runningButtons = document.querySelector('#running-btns');
 const stopButton = document.querySelector('#stop-btn');
 const nextButton = document.querySelector('#next-btn');
 const editorTextArea = document.querySelector('#editor-text-area');
+const pestanaStdOut = document.querySelector('#std-out--opcion');
+const pestanaLog = document.querySelector('#log--opcion');
+const mensajesStdOut = document.querySelector('#std-out--mensajes');
+const mensajesLog = document.querySelector('#log--mensajes');
+
 
 let valoresReservados = ['int', 'long', 'char', 'float', 'double', 'struct'];
 let posicionEnTexto = 0;
@@ -90,11 +95,14 @@ const serverURL = 'http://localhost:8080';
 
 runButton.addEventListener('click', e => {
     e.preventDefault();
-    runButton.style.display = 'none';
-    runningButtons.style.display = 'flex';
-    const variable = procesarTexto(editorTextArea.value, posicionEnTexto);
-    console.log(variable);
-    post(`${serverURL}/crearVariable`, variable);
+    try {
+        runButton.style.display = 'none';
+        runningButtons.style.display = 'flex';
+        const variable = procesarTexto(editorTextArea.value, posicionEnTexto);
+        post(`${serverURL}/crearVariable`, variable);
+    } catch (error) {
+        imprimirLog(error, true);
+    }
 });
 
 stopButton.addEventListener('click', e => {
@@ -103,24 +111,44 @@ stopButton.addEventListener('click', e => {
 });
 
 nextButton.addEventListener('click', async e => {
-    if (!nextButtonClicked) {
-        e.preventDefault();
-        nextButtonClicked = true;
-        let variable;
-        switch (creando) {
-            case 'variables':
-                variable = procesarTexto(editorTextArea.value, posicionEnTexto + 1);
-                break;
-            case 'struct':
-                variable = procesarStruct(editorTextArea.value, posicionEnTexto + 1);
-                break;
+    e.preventDefault();
+    try {
+        if (!nextButtonClicked) {
+            nextButtonClicked = true;
+            let variable;
+            switch (creando) {
+                case 'variables':
+                    variable = procesarTexto(editorTextArea.value, posicionEnTexto + 1);
+                    break;
+                case 'struct':
+                    variable = procesarStruct(editorTextArea.value, posicionEnTexto + 1);
+                    break;
+            }
+            if (variable !== undefined) {
+                console.log(variable);
+                post(`${serverURL}/crearVariable`, variable);
+            }
+            nextButtonClicked = false;
         }
-        if (variable !== undefined) {
-            console.log(variable);
-            post(`${serverURL}/crearVariable`, variable);
-        }
-        nextButtonClicked = false;
+    } catch (error) {
+        imprimirLog(error, true);
     }
+});
+
+pestanaLog.addEventListener('click', e => {
+    e.preventDefault();
+    mensajesStdOut.style.display = 'none'
+    mensajesLog.style.display = 'block';
+    pestanaLog.style.backgroundColor = 'rgba(0, 0, 0, 0.4)';
+    pestanaStdOut.style.backgroundColor = 'inherit';
+});
+
+pestanaStdOut.addEventListener('click', e => {
+    e.preventDefault();
+    mensajesLog.style.display = 'none'
+    mensajesStdOut.style.display = 'block';
+    pestanaStdOut.style.backgroundColor = 'rgba(0, 0, 0, 0.4)';
+    pestanaLog.style.backgroundColor = 'inherit';
 });
 
 detenerEjecucion = () => {
@@ -129,6 +157,7 @@ detenerEjecucion = () => {
     posicionEnTexto = 0;
     nextButtonClicked = false;
     variablesEnStruct = [];
+    mensajesStdOut.innerHTML = '';
 }
 
 procesarTexto = (texto, posicionInicial) => {
@@ -173,10 +202,17 @@ procesarTexto = (texto, posicionInicial) => {
         }
     }
     detenerEjecucion();
-    throw 'Error: falta ";"';
+    throw ('Error: falta ";"');
 }
 
 crearVariable = (informacion) => {
+    const ultimaPalabra = informacion[informacion.length - 1];
+
+    if (informacion[0].slice(0, 6) + ultimaPalabra[ultimaPalabra.length - 1] === 'print()') {
+        informacionString = arrayToString(informacion);
+        return imprimirStdOut(informacionString.slice(7, informacionString.length - 1));
+    }
+
     informacion = removerTodasLasOcurrencias(informacion, '');
 
     const tipoDeVariable = informacion[0];
@@ -184,7 +220,7 @@ crearVariable = (informacion) => {
     let valorDeVariable = informacion[3];
 
     if (informacion[2] !== '=') {
-        throw 'Variable mal declarada';
+        throw 'Error: Variable mal declarada';
     }
     if (valoresReservados.includes(nombreDeVariable)) {
         throw 'Error: nombre de la variable no puede ser un valor reservado';
@@ -208,7 +244,7 @@ crearNumero = (tipoDeVariable, nombreDeVariable, valorDeVariable) => {
     try {
         valorDeVariable = math.evaluate(valorDeVariable);
     } catch (error) {
-        throw 'Variable mal declarada';
+        throw 'Error: Variable mal declarada';
     }
 
     switch (tipoDeVariable) {
@@ -225,7 +261,7 @@ crearNumero = (tipoDeVariable, nombreDeVariable, valorDeVariable) => {
             variable = new double(valorDeVariable, nombreDeVariable);
             break;
         default:
-            throw 'Tipo de dato inválido';
+            throw 'Error: Tipo de dato inválido';
     }
     return variable;
 }
@@ -302,7 +338,7 @@ procesarStruct = (texto, posicionInicial) => {
         }
     }
     detenerEjecucion();
-    throw 'Error: falta "}"';
+    throw ('Error: falta "}"');
 }
 
 removerTodasLasOcurrencias = (array, valor) => {
@@ -318,19 +354,60 @@ removerTodasLasOcurrencias = (array, valor) => {
 }
 
 const post = async(url = '', data = {}) => {
-    let respuestaProcesada;
-    const respuestaSinProcesar = await fetch(url, {
-            method: 'POST',
-            mode: 'cors',
-            cache: 'no-cache',
-            credentials: 'same-origin',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            redirect: 'follow',
-            referrerPolicy: 'no-referrer',
-            body: JSON.stringify(data)
-        })
-        .then(response => response.text())
-        .then(body => console.log(body));
+    if (JSON.stringify(data) !== '{}') {
+        imprimirLog(`Enviando POST: ${JSON.stringify(data)} a la dirección: ${url}`);
+        try {
+            const respuesta = await fetch(url, {
+                    method: 'POST',
+                    mode: 'cors',
+                    cache: 'no-cache',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    redirect: 'follow',
+                    referrerPolicy: 'no-referrer',
+                    body: JSON.stringify(data)
+                })
+                .then(response => response.text())
+                .then(body => {
+                    imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                });
+        } catch (error) {
+            throw error;
+        }
+    }
+}
+
+imprimirLog = (texto, error = false) => {
+    let etiqueta = document.createElement('p');
+    if (error) {
+        etiqueta.style.color = 'red';
+    } else {
+        etiqueta.style.color = 'yellow';
+    }
+    let textoEtiqueta = document.createTextNode(texto);
+    etiqueta.appendChild(textoEtiqueta);
+    mensajesLog.appendChild(etiqueta);
+    mensajesLog.scrollTop = mensajesLog.scrollHeight;
+}
+
+imprimirStdOut = texto => {
+    if (texto[0] !== "'" || texto[texto.length - 1] !== "'") {
+        throw "Error: el texto a imprimir debe ir entre comillas";
+    }
+    let etiqueta = document.createElement('p');
+    etiqueta.style.color = 'white';
+    let textoEtiqueta = document.createTextNode(texto.slice(1, texto.length - 1));
+    etiqueta.appendChild(textoEtiqueta);
+    mensajesStdOut.appendChild(etiqueta);
+    mensajesStdOut.scrollTop = mensajesStdOut.scrollHeight;
+}
+
+arrayToString = array => {
+    let string = ``;
+    array.forEach(palabra => {
+        string += ` ${palabra}`;
+    });
+    return string;
 }
