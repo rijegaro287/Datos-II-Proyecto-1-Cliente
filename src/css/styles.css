@@ -17,7 +17,7 @@ body {
 }
 
 .grid--2-cols--75-25 {
-    grid-template-columns: 75% 25%;
+    grid-template-columns: 65% 35%;
 }
 
 .btn {
@@ -79,11 +79,32 @@ body {
     outline: none;
 }
 
-.ram-live-view--lista {
+#ram-live-view--lista {
     background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    list-style: none;
+    margin: 0;
+    padding: 0;
     box-sizing: border-box;
     border-top: oldlace solid 0.1px;
     border-bottom: oldlace solid 0.1px;
+    overflow-y: scroll;
+    overflow-x: hidden;
+}
+
+.ram-live-view--header,
+.ram-live-view--elemento {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: oldlace solid 0.1px;
+}
+
+.ram-live-view--header p,
+.ram-live-view--elemento p {
+    text-align: center;
+    flex: 0 0 25%;
+    box-sizing: border-box;
 }
 
 .output {

@@ -65,8 +65,9 @@ class reference {
 }
 
 class struct {
-    constructor(variables) {
-        this.variables = variables;
+    constructor(nombre, valor) {
+        this.nombre = nombre;
+        this.valor = valor;
         this.direccionDeMemoria = null;
     }
     getAddr() {
@@ -79,6 +80,7 @@ const runningButtons = document.querySelector('#running-btns');
 const stopButton = document.querySelector('#stop-btn');
 const nextButton = document.querySelector('#next-btn');
 const editorTextArea = document.querySelector('#editor-text-area');
+const ramLiveViewLista = document.querySelector('#ram-live-view--lista');
 const pestanaStdOut = document.querySelector('#std-out--opcion');
 const pestanaLog = document.querySelector('#log--opcion');
 const mensajesStdOut = document.querySelector('#std-out--mensajes');
@@ -89,17 +91,20 @@ let valoresReservados = ['int', 'long', 'char', 'float', 'double', 'struct'];
 let posicionEnTexto = 0;
 let nextButtonClicked = false;
 let creando = 'variables';
+let nombreStruct = '';
 let variablesEnStruct = [];
 
-const serverURL = 'http://localhost:8080';
+const serverURL = 'http://localhost:8888';
 
 runButton.addEventListener('click', e => {
     e.preventDefault();
+    limpiarVentana();
     try {
         runButton.style.display = 'none';
         runningButtons.style.display = 'flex';
         const variable = procesarTexto(editorTextArea.value, posicionEnTexto);
-        post(`${serverURL}/crearVariable`, variable);
+
+        postCrearVariable(variable);
     } catch (error) {
         imprimirLog(error, true);
     }
@@ -121,12 +126,12 @@ nextButton.addEventListener('click', async e => {
                     variable = procesarTexto(editorTextArea.value, posicionEnTexto + 1);
                     break;
                 case 'struct':
-                    variable = procesarStruct(editorTextArea.value, posicionEnTexto + 1);
+                    variable = procesarStruct(nombreStruct, editorTextArea.value, posicionEnTexto + 1);
                     break;
             }
             if (variable !== undefined) {
                 console.log(variable);
-                post(`${serverURL}/crearVariable`, variable);
+                postCrearVariable(variable);
             }
             nextButtonClicked = false;
         }
@@ -152,12 +157,13 @@ pestanaStdOut.addEventListener('click', e => {
 });
 
 detenerEjecucion = () => {
+    postFinalizarEjecucion();
     runningButtons.style.display = 'none';
     runButton.style.display = 'block';
     posicionEnTexto = 0;
     nextButtonClicked = false;
+    nombreStruct = '';
     variablesEnStruct = [];
-    mensajesStdOut.innerHTML = '';
 }
 
 procesarTexto = (texto, posicionInicial) => {
@@ -298,25 +304,26 @@ crearReferencia = (tipoDeVariable, nombreDeVariable, valorDeVariable) => {
 crearStruct = (informacion, texto, posicionInicial) => {
     creando = 'struct';
     informacion = removerTodasLasOcurrencias(informacion, '');
-    const nombreDeVariable = informacion[1];
-    if (valoresReservados.includes(nombreDeVariable)) {
+    nombreStruct = informacion[1];
+    if (valoresReservados.includes(nombreStruct)) {
         throw 'Error: nombre de la variable no puede ser un valor reservado';
     }
-    return procesarStruct(texto, posicionInicial);
+    return procesarStruct(nombreStruct, texto, posicionInicial);
 }
 
-procesarStruct = (texto, posicionInicial) => {
+procesarStruct = (nombre, texto, posicionInicial) => {
     let palabra = ''
     let informacion = [];
     let operadorIgualEncontrado = false;
 
     for (let i = posicionInicial; i < texto.length; i++) {
         const caracter = texto[i];
+        console.log(caracter);
         posicionEnTexto = i;
 
         if (caracter === '}') {
             creando = 'variables';
-            return new struct(variablesEnStruct);
+            return new struct(nombre, variablesEnStruct);
         } else if (caracter === ';') {
             informacion.push(palabra);
             try {
@@ -337,6 +344,7 @@ procesarStruct = (texto, posicionInicial) => {
             palabra += caracter;
         }
     }
+
     detenerEjecucion();
     throw ('Error: falta "}"');
 }
@@ -351,32 +359,6 @@ removerTodasLasOcurrencias = (array, valor) => {
         }
     }
     return array;
-}
-
-const post = async(url = '', data = {}) => {
-    if (JSON.stringify(data) !== '{}') {
-        imprimirLog(`Enviando POST: ${JSON.stringify(data)} a la dirección: ${url}`);
-        try {
-            const respuesta = await fetch(url, {
-                    method: 'POST',
-                    mode: 'cors',
-                    cache: 'no-cache',
-                    credentials: 'same-origin',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    redirect: 'follow',
-                    referrerPolicy: 'no-referrer',
-                    body: JSON.stringify(data)
-                })
-                .then(response => response.text())
-                .then(body => {
-                    imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
-                });
-        } catch (error) {
-            throw error;
-        }
-    }
 }
 
 imprimirLog = (texto, error = false) => {
@@ -410,4 +392,131 @@ arrayToString = array => {
         string += ` ${palabra}`;
     });
     return string;
+}
+
+actualizarRamLiveView = variable => {
+
+    let ramLiveViewElemento = document.createElement('li');
+    ramLiveViewElemento.classList.add("ram-live-view--elemento");
+
+    let ramLiveViewPValor = document.createElement('p');
+    let ramLiveViewPValorTexto = document.createTextNode(variable.valor);
+    ramLiveViewPValor.appendChild(ramLiveViewPValorTexto);
+
+    let ramLiveViewPNombre = document.createElement('p');
+    let ramLiveViewPNombreTexto = document.createTextNode(variable.nombre);
+    ramLiveViewPNombre.appendChild(ramLiveViewPNombreTexto);
+
+    let ramLiveViewPDireccion = document.createElement('p');
+    let ramLiveViewPDireccionTexto = document.createTextNode(variable.direccionDeMemoria);
+    ramLiveViewPDireccion.appendChild(ramLiveViewPDireccionTexto);
+
+    let ramLiveViewPRefs = document.createElement('p');
+    let ramLiveViewPRefsTexto = document.createTextNode('--------');
+    ramLiveViewPRefs.appendChild(ramLiveViewPRefsTexto);
+
+    ramLiveViewElemento.appendChild(ramLiveViewPDireccion);
+    ramLiveViewElemento.appendChild(ramLiveViewPValor);
+    ramLiveViewElemento.appendChild(ramLiveViewPNombre);
+    ramLiveViewElemento.appendChild(ramLiveViewPRefs);
+
+    ramLiveViewLista.appendChild(ramLiveViewElemento);
+    ramLiveViewLista.scrollTop = ramLiveViewLista.scrollHeight;
+
+}
+
+limpiarVentana = () => {
+    mensajesLog.innerHTML = '';
+    mensajesStdOut.innerHTML = '';
+    let elementosRamLiveView = document.querySelectorAll('#ram-live-view--lista .ram-live-view--elemento');
+    for (let i = 0; i < elementosRamLiveView.length; i++) {
+        ramLiveViewLista.removeChild(elementosRamLiveView[i]);
+    }
+}
+
+const postCrearVariable = async(data = {}) => {
+        if (data.hasOwnProperty('variables')) {
+            return postCrearStruct(data);
+        }
+        if (JSON.stringify(data) !== '{}') {
+            imprimirLog(`Enviando POST: ${JSON.stringify(data)} a la dirección: ${`${serverURL}/crearVariable`}`);
+        try {
+            const respuesta = await fetch(`${serverURL}/crearVariable`, {
+                    method: 'POST',
+                    mode: 'cors',
+                    cache: 'no-cache',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    redirect: 'follow',
+                    referrerPolicy: 'no-referrer',
+                    body: JSON.stringify(data)
+                })
+                .then(response => response.text())
+                .then(body => {
+                    imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                    data.direccionDeMemoria = JSON.parse(body).direccion;
+                    actualizarRamLiveView(data);
+                });
+        } catch (error) {
+            throw error;
+        }
+    }
+}
+
+const postCrearStruct = async(data = {}) => {
+        if (JSON.stringify(data) !== '{}') {
+            imprimirLog(`Enviando POST: ${JSON.stringify(data)} a la dirección: ${`${serverURL}/createStruct`}`);
+        try {
+            const respuesta = await fetch(`${serverURL}/createStruct`, {
+                    method: 'POST',
+                    mode: 'cors',
+                    cache: 'no-cache',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    redirect: 'follow',
+                    referrerPolicy: 'no-referrer',
+                    body: JSON.stringify(data)
+                })
+                .then(response => response.text())
+                .then(body => {
+                    imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                    data.direccionDeMemoria = JSON.parse(body).direccion;
+                    actualizarRamLiveView(data);
+                });
+        } catch (error) {
+            throw error;
+        }
+    }
+}
+
+const postFinalizarEjecucion = async() => {
+        const data = {
+            codigo: 57438,
+            descripcion: 'Ejecucion finalizada'
+        };
+        imprimirLog(`Enviando POST: ${JSON.stringify(data)} a la dirección: ${`${serverURL}/crearVariable`}`);
+    try {
+        const respuesta = await fetch(`${serverURL}/finalizarEjecucion`, {
+                method: 'POST',
+                mode: 'cors',
+                cache: 'no-cache',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                redirect: 'follow',
+                referrerPolicy: 'no-referrer',
+                body: JSON.stringify(data)
+            })
+            .then(response => response.text())
+            .then(body => {
+                imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+            });
+    } catch (error) {
+        throw error;
+    }
 }
