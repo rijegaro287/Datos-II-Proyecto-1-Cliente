@@ -109,7 +109,7 @@ let creando = 'variables';
 let nombreStruct = '';
 let variablesEnStruct = [];
 
-const serverURL = 'http://localhost:9090';
+const serverURL = 'http://localhost:8080';
 
 runButton.addEventListener('click', e => {
     e.preventDefault();
@@ -345,7 +345,9 @@ procesarStruct = (nombre, texto, posicionInicial) => {
 
         if (caracter === '}') {
             creando = 'variables';
-            return new struct(nombre, variablesEnStruct);
+            let nuevoStruct = new struct(nombre, variablesEnStruct);
+            variablesEnStruct = [];
+            return nuevoStruct;
         } else if (caracter === ';') {
             informacion.push(palabra);
             try {
@@ -373,12 +375,12 @@ procesarStruct = (nombre, texto, posicionInicial) => {
 
 reasignarVariable = async(informacion) => {
     try {
+        let elementosRamLiveView = document.querySelectorAll('#ram-live-view--lista .ram-live-view--elemento');
+
         let variableACambiar = {
             nombre: informacion[0]
         }
-        let nuevoValor = {
-            nombre: informacion[2]
-        }
+
         await postSolicitarVariable(variableACambiar)
             .then(response => response.text())
             .then(body => {
@@ -386,28 +388,54 @@ reasignarVariable = async(informacion) => {
                 headersPOST.body = '{}';
                 variableACambiar = JSON.parse(body);
             });
-        await postSolicitarVariable(nuevoValor)
-            .then(response => response.text())
-            .then(body => {
-                imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
-                headersPOST.body = '{}';
-                nuevoValor = JSON.parse(body);
-            });
 
-        console.log(variableACambiar, nuevoValor);
-
-        let elementosRamLiveView = document.querySelectorAll('#ram-live-view--lista .ram-live-view--elemento');
-        elementosRamLiveView.forEach(elemento => {
-            if (elemento.children[2].innerHTML === informacion[0]) {
-                if (variableACambiar.tipoDeDato === nuevoValor.tipoDeDato) {
-                    elemento.children[1].innerHTML = nuevoValor.valor;
-                    return;
+        if (validarTipoDeDato(variableACambiar.tipoDeDato, informacion[2])) {
+            elementosRamLiveView.forEach(elemento => {
+                if (elemento.children[2].innerHTML === informacion[0]) {
+                    elemento.children[1].innerHTML = informacion[2];
                 }
-                throw 'Error: Los tipos de dato no coinciden';
+            })
+        } else {
+            let nuevoValor = {
+                nombre: informacion[2]
             }
-        })
+
+            await postSolicitarVariable(nuevoValor)
+                .then(response => response.text())
+                .then(body => {
+                    imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                    headersPOST.body = '{}';
+                    nuevoValor = JSON.parse(body);
+                });
+
+            elementosRamLiveView.forEach(elemento => {
+                if (elemento.children[2].innerHTML === informacion[0]) {
+                    if (variableACambiar.tipoDeDato === nuevoValor.tipoDeDato) {
+                        elemento.children[1].innerHTML = nuevoValor.valor;
+                    } else {
+                        throw 'Error: Los tipos de dato no coinciden';
+                    }
+                }
+            })
+        }
     } catch (error) {
         imprimirLog(error, true);
+    }
+}
+
+validarTipoDeDato = (tipoDeDato, dato) => {
+    try {
+        if (tipoDeDato === "char" && isNaN(dato) && dato[0] === '"' && dato[dato.length - 1] === '"') {
+            return true;
+        } else if (dato % 1 == 0 && (tipoDeDato === "int" || tipoDeDato === "long")) {
+            return true;
+        } else if (!isNaN(dato) && (tipoDeDato === "double" || tipoDeDato === "float")) {
+            return true;
+        } else {
+            return false;
+        }
+    } catch (error) {
+        throw error
     }
 }
 
