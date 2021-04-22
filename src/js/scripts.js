@@ -109,15 +109,15 @@ let creando = 'variables';
 let nombreStruct = '';
 let variablesEnStruct = [];
 
-const serverURL = 'http://localhost:8080';
+const serverURL = 'http://localhost:8888';
 
-runButton.addEventListener('click', e => {
+runButton.addEventListener('click', async e => {
     e.preventDefault();
     limpiarVentana();
     try {
         runButton.style.display = 'none';
         runningButtons.style.display = 'flex';
-        const variable = procesarTexto(editorTextArea.value, posicionEnTexto);
+        const variable = await procesarTexto(editorTextArea.value, posicionEnTexto);
 
         postCrearVariable(variable);
     } catch (error) {
@@ -138,7 +138,7 @@ nextButton.addEventListener('click', async e => {
             let variable;
             switch (creando) {
                 case 'variables':
-                    variable = procesarTexto(editorTextArea.value, posicionEnTexto + 1);
+                    variable = await procesarTexto(editorTextArea.value, posicionEnTexto + 1);
                     break;
                 case 'struct':
                     variable = procesarStruct(nombreStruct, editorTextArea.value, posicionEnTexto + 1);
@@ -180,7 +180,7 @@ detenerEjecucion = () => {
     variablesEnStruct = [];
 }
 
-procesarTexto = (texto, posicionInicial) => {
+procesarTexto = async(texto, posicionInicial) => {
     creando = 'variables';
     if (posicionInicial === texto.length) {
         detenerEjecucion();
@@ -195,7 +195,31 @@ procesarTexto = (texto, posicionInicial) => {
         posicionEnTexto = i;
         const caracter = texto[i];
 
-        if (caracter === '{' && informacion[0] === 'struct') {
+        if (caracter === '{' && informacion.length === 0) {
+            try {
+                await postActualizarScopes('{')
+                    .then(response => response.text())
+                    .then(body => {
+                        imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                        headersPOST.body = '{}';
+                    });
+            } catch (error) {
+                detenerEjecucion();
+                throw error;
+            }
+        } else if (caracter === '}' && informacion.length === 0) {
+            try {
+                await postActualizarScopes('}')
+                    .then(response => response.text())
+                    .then(body => {
+                        imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                        headersPOST.body = '{}';
+                    });
+            } catch (error) {
+                detenerEjecucion();
+                throw error;
+            }
+        } else if (caracter === '{' && informacion[0] === 'struct') {
             try {
                 informacion.push(palabra);
                 return crearStruct(informacion, texto, i + 1);
@@ -609,6 +633,17 @@ const postSolicitarVariable = async (variable) => {
         imprimirLog(`Enviando POST: ${JSON.stringify(variable)} a la dirección: ${`${serverURL}/devolverVariable`}`);
         headersPOST.body = JSON.stringify(variable);
         const respuesta = await fetch(`${serverURL}/devolverVariable`, headersPOST);
+        return respuesta;
+    } catch (error) {
+        throw error;
+    }
+}
+
+const postActualizarScopes = async (accion) => {
+    try {
+        imprimirLog(`Enviando POST: ${accion} a la dirección: ${`${serverURL}/actualizarScopes`}`);
+        headersPOST.body = accion;
+        const respuesta = await fetch(`${serverURL}/actualizarScopes`, headersPOST);
         return respuesta;
     } catch (error) {
         throw error;
