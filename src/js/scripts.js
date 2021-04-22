@@ -214,7 +214,7 @@ procesarTexto = async(texto, posicionInicial) => {
                     .then(body => {
                         imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
                         headersPOST.body = '{}';
-                        eliminarScopeRamView(JSON.parse(body));
+                        eliminarScopeRamView(JSON.parse(body).nombreDeVariableEliminada);
                     });
             } catch (error) {
                 detenerEjecucion();
@@ -687,5 +687,12 @@ const postActualizarValorVariable = async (nombreVariableJSON) => {
 }
 
 const eliminarScopeRamView = (variablesEliminadas) => {
-    console.log(variablesEliminadas);
+    let elementosRamLiveView = document.querySelectorAll('#ram-live-view--lista .ram-live-view--elemento');
+    variablesEliminadas.forEach(variable =>{ 
+        elementosRamLiveView.forEach(elemento => {
+            if (elemento.children[2].innerHTML === variable) {
+                ramLiveViewLista.removeChild(elemento);
+            }
+        });
+    });
 }
