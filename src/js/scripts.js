@@ -89,6 +89,18 @@ const pestanaLog = document.querySelector('#log--opcion');
 const mensajesStdOut = document.querySelector('#std-out--mensajes');
 const mensajesLog = document.querySelector('#log--mensajes');
 
+const headersPOST = {
+    method: 'POST',
+    mode: 'cors',
+    cache: 'no-cache',
+    credentials: 'same-origin',
+    headers: {
+        'Content-Type': 'application/json'
+    },
+    redirect: 'follow',
+    referrerPolicy: 'no-referrer',
+    body: '{}'
+}
 
 let valoresReservados = ['int', 'long', 'char', 'float', 'double', 'struct'];
 let posicionEnTexto = 0;
@@ -97,7 +109,7 @@ let creando = 'variables';
 let nombreStruct = '';
 let variablesEnStruct = [];
 
-const serverURL = 'http://localhost:8888';
+const serverURL = 'http://localhost:9090';
 
 runButton.addEventListener('click', e => {
     e.preventDefault();
@@ -133,7 +145,6 @@ nextButton.addEventListener('click', async e => {
                     break;
             }
             if (variable !== undefined) {
-                console.log(variable);
                 postCrearVariable(variable);
             }
             nextButtonClicked = false;
@@ -223,6 +234,16 @@ crearVariable = (informacion) => {
     }
 
     informacion = removerTodasLasOcurrencias(informacion, '');
+
+    for (let i = 0; i < informacion.length; i++) {
+        let elemento = [...informacion[i]];
+        informacion[i] = arrayToString(removerTodasLasOcurrencias(elemento, ' '), false);
+    }
+
+    if (informacion[1] === '=' && informacion.length === 3) {
+        return reasignarVariable(informacion)
+    }
+
     const tipoDeVariable = informacion[0];
     const nombreDeVariable = informacion[1];
     const valorDeVariable = informacion[3];
@@ -320,7 +341,6 @@ procesarStruct = (nombre, texto, posicionInicial) => {
 
     for (let i = posicionInicial; i < texto.length; i++) {
         const caracter = texto[i];
-        console.log(caracter);
         posicionEnTexto = i;
 
         if (caracter === '}') {
@@ -351,6 +371,46 @@ procesarStruct = (nombre, texto, posicionInicial) => {
     throw ('Error: falta "}"');
 }
 
+reasignarVariable = async(informacion) => {
+    try {
+        let variableACambiar = {
+            nombre: informacion[0]
+        }
+        let nuevoValor = {
+            nombre: informacion[2]
+        }
+        await postSolicitarVariable(variableACambiar)
+            .then(response => response.text())
+            .then(body => {
+                imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                headersPOST.body = '{}';
+                variableACambiar = JSON.parse(body);
+            });
+        await postSolicitarVariable(nuevoValor)
+            .then(response => response.text())
+            .then(body => {
+                imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                headersPOST.body = '{}';
+                nuevoValor = JSON.parse(body);
+            });
+
+        console.log(variableACambiar, nuevoValor);
+
+        let elementosRamLiveView = document.querySelectorAll('#ram-live-view--lista .ram-live-view--elemento');
+        elementosRamLiveView.forEach(elemento => {
+            if (elemento.children[2].innerHTML === informacion[0]) {
+                if (variableACambiar.tipoDeDato === nuevoValor.tipoDeDato) {
+                    elemento.children[1].innerHTML = nuevoValor.valor;
+                    return;
+                }
+                throw 'Error: Los tipos de dato no coinciden';
+            }
+        })
+    } catch (error) {
+        imprimirLog(error, true);
+    }
+}
+
 removerTodasLasOcurrencias = (array, valor) => {
     let i = 0;
     while (i < array.length) {
@@ -365,15 +425,20 @@ removerTodasLasOcurrencias = (array, valor) => {
 
 imprimirLog = (texto, error = false) => {
     let etiqueta = document.createElement('p');
-    if (error) {
-        etiqueta.style.color = 'red';
-    } else {
-        etiqueta.style.color = 'yellow';
-    }
     let textoEtiqueta = document.createTextNode(texto);
     etiqueta.appendChild(textoEtiqueta);
     mensajesLog.appendChild(etiqueta);
     mensajesLog.scrollTop = mensajesLog.scrollHeight;
+    if (error) {
+        etiqueta.style.color = 'red';
+        mensajesStdOut.style.display = 'none'
+        mensajesLog.style.display = 'block';
+        pestanaLog.style.backgroundColor = 'rgba(0, 0, 0, 0.4)';
+        pestanaStdOut.style.backgroundColor = 'inherit';
+        detenerEjecucion();
+    } else {
+        etiqueta.style.color = 'yellow';
+    }
 }
 
 imprimirStdOut = texto => {
@@ -388,11 +453,17 @@ imprimirStdOut = texto => {
     mensajesStdOut.scrollTop = mensajesStdOut.scrollHeight;
 }
 
-arrayToString = array => {
+arrayToString = (array, espacios = true) => {
     let string = ``;
-    array.forEach(palabra => {
-        string += ` ${palabra}`;
-    });
+    if (espacios) {
+        array.forEach(palabra => {
+            string += ` ${palabra}`;
+        });
+    } else {
+        array.forEach(palabra => {
+            string += `${palabra}`;
+        });
+    }
     return string;
 }
 
@@ -443,23 +514,14 @@ const postCrearVariable = async(data = {}) => {
         if (JSON.stringify(data) !== '{}') {
             imprimirLog(`Enviando POST: ${JSON.stringify(data)} a la dirección: ${`${serverURL}/crearVariable`}`);
         try {
-            const respuesta = await fetch(`${serverURL}/crearVariable`, {
-                    method: 'POST',
-                    mode: 'cors',
-                    cache: 'no-cache',
-                    credentials: 'same-origin',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    redirect: 'follow',
-                    referrerPolicy: 'no-referrer',
-                    body: JSON.stringify(data)
-                })
+            headersPOST.body = JSON.stringify(data);
+            const respuesta = await fetch(`${serverURL}/crearVariable`, headersPOST)
                 .then(response => response.text())
                 .then(body => {
                     imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
                     data.direccionDeMemoria = JSON.parse(body).direccion;
                     actualizarRamLiveView(data);
+                    headersPOST.body = '{}';
                 });
         } catch (error) {
             throw error;
@@ -471,23 +533,14 @@ const postCrearStruct = async(data = {}) => {
         if (JSON.stringify(data) !== '{}') {
             imprimirLog(`Enviando POST: ${JSON.stringify(data)} a la dirección: ${`${serverURL}/createStruct`}`);
         try {
-            const respuesta = await fetch(`${serverURL}/createStruct`, {
-                    method: 'POST',
-                    mode: 'cors',
-                    cache: 'no-cache',
-                    credentials: 'same-origin',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    redirect: 'follow',
-                    referrerPolicy: 'no-referrer',
-                    body: JSON.stringify(data)
-                })
+            headersPOST.body = JSON.stringify(data);
+            const respuesta = await fetch(`${serverURL}/createStruct`, headersPOST)
                 .then(response => response.text())
                 .then(body => {
                     imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
                     data.direccionDeMemoria = JSON.parse(body).direccion;
                     actualizarRamLiveView(data);
+                    headersPOST.body = '{}';
                 });
         } catch (error) {
             throw error;
@@ -500,7 +553,7 @@ const postFinalizarEjecucion = async() => {
             codigo: 57438,
             descripcion: 'Ejecucion finalizada'
         };
-        imprimirLog(`Enviando POST: ${JSON.stringify(data)} a la dirección: ${`${serverURL}/crearVariable`}`);
+        imprimirLog(`Enviando POST: ${JSON.stringify(data)} a la dirección: ${`${serverURL}/finalizarEjecucion`}`);
     try {
         const respuesta = await fetch(`${serverURL}/finalizarEjecucion`, {
                 method: 'POST',
@@ -518,6 +571,17 @@ const postFinalizarEjecucion = async() => {
             .then(body => {
                 imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
             });
+    } catch (error) {
+        throw error;
+    }
+}
+
+const postSolicitarVariable = async (variable) => {
+    try {
+        imprimirLog(`Enviando POST: ${JSON.stringify(variable)} a la dirección: ${`${serverURL}/devolverVariable`}`);
+        headersPOST.body = JSON.stringify(variable);
+        const respuesta = await fetch(`${serverURL}/devolverVariable`, headersPOST);
+        return respuesta;
     } catch (error) {
         throw error;
     }
