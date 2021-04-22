@@ -53,9 +53,12 @@ class double extends tipoDeDato {
 }
 
 class reference {
-    constructor(tipoDeReferencia, direccionDeMemoria, nombre) {
+    constructor(tipoDeReferencia, nombre, valor) {
+        this.tipoDeDato = 'referencia';
         this.tipoDeReferencia = tipoDeReferencia;
-        this.direccionDeMemoria = direccionDeMemoria;
+        this.valor = valor;
+        this.direccionDeMemoria = null;
+        this.espacioEnMemoria = 4;
         this.nombre = nombre;
     }
 
@@ -220,19 +223,18 @@ crearVariable = (informacion) => {
     }
 
     informacion = removerTodasLasOcurrencias(informacion, '');
-
     const tipoDeVariable = informacion[0];
     const nombreDeVariable = informacion[1];
-    let valorDeVariable = informacion[3];
+    const valorDeVariable = informacion[3];
 
+    if (tipoDeVariable.split('<').includes('reference')) {
+        return crearReferencia(tipoDeVariable, nombreDeVariable, valorDeVariable);
+    }
     if (informacion[2] !== '=') {
         throw 'Error: Variable mal declarada';
     }
     if (valoresReservados.includes(nombreDeVariable)) {
         throw 'Error: nombre de la variable no puede ser un valor reservado';
-    }
-    if (tipoDeVariable.split('<').includes('reference')) {
-        return crearReferencia(tipoDeVariable, nombreDeVariable, valorDeVariable);
     }
 
     switch (tipoDeVariable) {
@@ -286,18 +288,18 @@ crearChar = (nombreDeVariable, valorDeVariable) => {
     return variable;
 }
 
-crearReferencia = (tipoDeVariable, nombreDeVariable, valorDeVariable) => {
-    let tipoDeDato = tipoDeVariable.split('reference');
-    removerTodasLasOcurrencias(tipoDeDato, '');
-    tipoDeDato = tipoDeDato[0];
+crearReferencia = (tipoDeVariable, nombreDeVariable, valorDeVariable = null) => {
+    let tipoDeReferencia = tipoDeVariable.split('reference');
+    removerTodasLasOcurrencias(tipoDeReferencia, '');
+    tipoDeReferencia = tipoDeReferencia[0];
 
-    if (tipoDeDato === undefined || tipoDeDato[0] !== '<' || tipoDeDato[tipoDeDato.length - 1] !== '>') {
+    if (tipoDeReferencia === undefined || tipoDeReferencia[0] !== '<' || tipoDeReferencia[tipoDeReferencia.length - 1] !== '>') {
         throw 'Error: El tipo de dato de una referencia debe ir en entre flechas';
     } else {
-        tipoDeDato = tipoDeDato.slice(1, tipoDeDato.length - 1);
+        tipoDeReferencia = tipoDeReferencia.slice(1, tipoDeReferencia.length - 1);
     }
 
-    const variable = new reference(tipoDeDato, valorDeVariable, nombreDeVariable);
+    const variable = new reference(tipoDeReferencia, nombreDeVariable, valorDeVariable);
     return variable;
 }
 
