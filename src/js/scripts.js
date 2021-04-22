@@ -109,7 +109,7 @@ let creando = 'variables';
 let nombreStruct = '';
 let variablesEnStruct = [];
 
-const serverURL = 'http://localhost:8888';
+const serverURL = 'http://localhost:8080';
 
 runButton.addEventListener('click', async e => {
     e.preventDefault();
@@ -214,6 +214,7 @@ procesarTexto = async(texto, posicionInicial) => {
                     .then(body => {
                         imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
                         headersPOST.body = '{}';
+                        eliminarScopeRamView(JSON.parse(body));
                     });
             } catch (error) {
                 detenerEjecucion();
@@ -398,6 +399,10 @@ procesarStruct = (nombre, texto, posicionInicial) => {
 }
 
 reasignarVariable = async(informacion) => {
+    let cambioEnServer = {
+        nombre: informacion[0],
+        valor: null
+    }
     try {
         let elementosRamLiveView = document.querySelectorAll('#ram-live-view--lista .ram-live-view--elemento');
 
@@ -416,7 +421,14 @@ reasignarVariable = async(informacion) => {
         if (validarTipoDeDato(variableACambiar.tipoDeDato, informacion[2])) {
             elementosRamLiveView.forEach(elemento => {
                 if (elemento.children[2].innerHTML === informacion[0]) {
-                    elemento.children[1].innerHTML = informacion[2];
+                    elemento.children[1].innerHTML = informacion[2].replace(/['"]+/g, '');
+                    cambioEnServer.valor = informacion[2];
+                    postActualizarValorVariable(cambioEnServer)
+                        .then(response => response.text())
+                        .then(body => {
+                            imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                            headersPOST.body = '{}';
+                        });;
                 }
             })
         } else {
@@ -436,6 +448,13 @@ reasignarVariable = async(informacion) => {
                 if (elemento.children[2].innerHTML === informacion[0]) {
                     if (variableACambiar.tipoDeDato === nuevoValor.tipoDeDato) {
                         elemento.children[1].innerHTML = nuevoValor.valor;
+                        cambioEnServer.valor = nuevoValor.valor;
+                        postActualizarValorVariable(cambioEnServer)
+                            .then(response => response.text())
+                            .then(body => {
+                                imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                                headersPOST.body = '{}';
+                            });;;
                     } else {
                         throw 'Error: Los tipos de dato no coinciden';
                     }
@@ -520,7 +539,6 @@ arrayToString = (array, espacios = true) => {
 }
 
 actualizarRamLiveView = variable => {
-
     let ramLiveViewElemento = document.createElement('li');
     ramLiveViewElemento.classList.add("ram-live-view--elemento");
 
@@ -537,7 +555,7 @@ actualizarRamLiveView = variable => {
     ramLiveViewPDireccion.appendChild(ramLiveViewPDireccionTexto);
 
     let ramLiveViewPRefs = document.createElement('p');
-    let ramLiveViewPRefsTexto = document.createTextNode('--------');
+    let ramLiveViewPRefsTexto = document.createTextNode(variable.conteoDeReferencias);
     ramLiveViewPRefs.appendChild(ramLiveViewPRefsTexto);
 
     ramLiveViewElemento.appendChild(ramLiveViewPDireccion);
@@ -572,6 +590,7 @@ const postCrearVariable = async(data = {}) => {
                 .then(body => {
                     imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
                     data.direccionDeMemoria = JSON.parse(body).direccion;
+                    data.conteoDeReferencias = JSON.parse(body).conteoDeReferencias;
                     actualizarRamLiveView(data);
                     headersPOST.body = '{}';
                 });
@@ -591,6 +610,7 @@ const postCrearStruct = async(data = {}) => {
                 .then(body => {
                     imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
                     data.direccionDeMemoria = JSON.parse(body).direccion;
+                    data.conteoDeReferencias = JSON.parse(body).conteoDeReferencias;
                     actualizarRamLiveView(data);
                     headersPOST.body = '{}';
                 });
@@ -648,4 +668,24 @@ const postActualizarScopes = async (accion) => {
     } catch (error) {
         throw error;
     }
+}
+
+const postActualizarValorVariable = async (nombreVariableJSON) => {
+    if (isNaN(nombreVariableJSON.valor)) {
+        nombreVariableJSON.valor = nombreVariableJSON.valor.replace(/['"]+/g, '');
+    }else{
+        nombreVariableJSON.valor = Number(nombreVariableJSON.valor);
+    }
+    try {
+        imprimirLog(`Enviando POST: ${JSON.stringify(nombreVariableJSON)} a la dirección: ${`${serverURL}/actualizarValorVariable`}`);
+        headersPOST.body = JSON.stringify(nombreVariableJSON)
+        const respuesta = await fetch(`${serverURL}/actualizarValorVariable`, headersPOST);
+        return respuesta;
+    } catch (error) {
+        throw error;
+    }
+}
+
+const eliminarScopeRamView = (variablesEliminadas) => {
+    console.log(variablesEliminadas);
 }
