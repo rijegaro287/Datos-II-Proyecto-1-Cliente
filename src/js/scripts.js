@@ -109,7 +109,7 @@ let creando = 'variables';
 let nombreStruct = '';
 let variablesEnStruct = [];
 
-const serverURL = 'http://localhost:8080';
+const serverURL = 'http://localhost:9090';
 
 runButton.addEventListener('click', async e => {
     e.preventDefault();
@@ -512,13 +512,35 @@ imprimirLog = (texto, error = false) => {
     }
 }
 
-imprimirStdOut = texto => {
-    if (texto[0] !== "'" || texto[texto.length - 1] !== "'") {
-        throw "Error: el texto a imprimir debe ir entre comillas";
+imprimirStdOut = async(texto) => {
+    let variable;
+    if (texto[0] === "'" || texto[texto.length - 1] === "'") {
+        variable = texto.slice(1, texto.length - 1);
+    } else if ([...texto].includes('+')) {
+        variable = await realizarOperación(texto.split('+'), '+');
+    } else if ([...texto].includes('-')) {
+        variable = await realizarOperación(texto.split('-'), '-');
+    } else if ([...texto].includes('*')) {
+        variable = await realizarOperación(texto.split('*'), '*');
+    } else if ([...texto].includes('/')) {
+        variable = await realizarOperación(texto.split('/'), '/');
+    } else {
+        variable = {
+            nombre: texto
+        }
+        await postSolicitarVariable(variable)
+            .then(response => response.text())
+            .then(body => {
+                imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                headersPOST.body = '{}';
+                variable = JSON.parse(body).valor;
+                console.log(variable);
+            });
     }
+    console.log(variable);
     let etiqueta = document.createElement('p');
     etiqueta.style.color = 'white';
-    let textoEtiqueta = document.createTextNode(texto.slice(1, texto.length - 1));
+    let textoEtiqueta = document.createTextNode(variable);
     etiqueta.appendChild(textoEtiqueta);
     mensajesStdOut.appendChild(etiqueta);
     mensajesStdOut.scrollTop = mensajesStdOut.scrollHeight;
@@ -686,7 +708,7 @@ const postActualizarValorVariable = async (nombreVariableJSON) => {
     }
 }
 
-const eliminarScopeRamView = (variablesEliminadas) => {
+eliminarScopeRamView = (variablesEliminadas) => {
     let elementosRamLiveView = document.querySelectorAll('#ram-live-view--lista .ram-live-view--elemento');
     variablesEliminadas.forEach(variable =>{ 
         elementosRamLiveView.forEach(elemento => {
@@ -695,4 +717,74 @@ const eliminarScopeRamView = (variablesEliminadas) => {
             }
         });
     });
+}
+
+realizarOperación = async(texto, operador) => {
+    console.log(texto, operador);
+    if (texto.length !== 2) {
+        throw "Error: las operaciones deben tener dos variables";
+    }
+    let variable1 = arrayToString(removerTodasLasOcurrencias([...texto[0]], ' '), false);
+    let variable2 = arrayToString(removerTodasLasOcurrencias([...texto[1]], ' '), false);
+
+    if (isNaN(variable1) && isNaN(variable2)) {
+        const solicitudVariable1 = {
+            nombre: variable1
+        }
+        const solicitudVariable2 = {
+            nombre: variable2
+        }
+        await postSolicitarVariable(solicitudVariable1)
+            .then(response => response.text())
+            .then(body => {
+                imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                headersPOST.body = '{}';
+                variable1 = JSON.parse(body).valor;
+            });
+
+        await postSolicitarVariable(solicitudVariable2)
+            .then(response => response.text())
+            .then(body => {
+                imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                headersPOST.body = '{}';
+                variable2 = JSON.parse(body).valor;
+            });
+    }else if (isNaN(variable1) && !isNaN(variable2)) {
+        const solicitudVariable1 = {
+            nombre: variable1
+        }
+        await postSolicitarVariable(solicitudVariable1)
+            .then(response => response.text())
+            .then(body => {
+                imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                headersPOST.body = '{}';
+                variable1 = JSON.parse(body).valor;
+            });
+    }else if (!isNaN(variable1) && isNaN(variable2)) {
+        const solicitudVariable2 = {
+            nombre: variable2
+        }
+        await postSolicitarVariable(solicitudVariable2)
+            .then(response => response.text())
+            .then(body => {
+                imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                headersPOST.body = '{}';
+                variable2 = JSON.parse(body).valor;
+            });
+    }else{
+        throw "Error: Las operaciones deben realizarse con números"
+    }
+
+    switch(operador){
+        case '+':
+            return Number(variable1) + Number(variable2);
+        case '-':
+            return Number(variable1) - Number(variable2);
+        case '*':
+            return Number(variable1) * Number(variable2);
+        case '/':
+            return Number(variable1) / Number(variable2);
+        default:
+            throw 'Error: operador no soportado';
+    }
 }
