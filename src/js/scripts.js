@@ -251,6 +251,7 @@ procesarTexto = async(texto, posicionInicial) => {
 }
 
 crearVariable = (informacion) => {
+    console.log(informacion);
     const ultimaPalabra = informacion[informacion.length - 1];
 
     if (informacion[0].slice(0, 6) + ultimaPalabra[ultimaPalabra.length - 1] === 'print()') {
@@ -271,15 +272,15 @@ crearVariable = (informacion) => {
 
     const tipoDeVariable = informacion[0];
     const nombreDeVariable = informacion[1];
-    const valorDeVariable = informacion[3];
+    let valorDeVariable = informacion[3];
 
-    if (tipoDeVariable.split('<').includes('reference')) {
+    if (informacion.length === 2) {
+        valorDeVariable = 0;
+    } else if (tipoDeVariable.split('<').includes('reference')) {
         return crearReferencia(tipoDeVariable, nombreDeVariable, valorDeVariable);
-    }
-    if (informacion[2] !== '=') {
+    } else if (informacion[2] !== '=') {
         throw 'Error: Variable mal declarada';
-    }
-    if (valoresReservados.includes(nombreDeVariable)) {
+    } else if (valoresReservados.includes(nombreDeVariable)) {
         throw 'Error: nombre de la variable no puede ser un valor reservado';
     }
 
@@ -323,14 +324,18 @@ crearNumero = (tipoDeVariable, nombreDeVariable, valorDeVariable) => {
 crearChar = (nombreDeVariable, valorDeVariable) => {
     let variable = null;
 
-    valorDeVariable = [...valorDeVariable];
-    removerTodasLasOcurrencias(valorDeVariable, ' ');
-    if (valorDeVariable[0] !== '"' || valorDeVariable[valorDeVariable.length - 1] !== '"') {
-        throw 'Error: los char deben ir entre comillas';
-    } else if (valorDeVariable.length !== 3) {
-        throw 'Error: los char solo pueden tener un caracter';
+    if (valorDeVariable !== 0) {
+        valorDeVariable = [...valorDeVariable];
+        removerTodasLasOcurrencias(valorDeVariable, ' ');
+        if (valorDeVariable[0] !== '"' || valorDeVariable[valorDeVariable.length - 1] !== '"') {
+            throw 'Error: los char deben ir entre comillas';
+        } else if (valorDeVariable.length !== 3) {
+            throw 'Error: los char solo pueden tener un caracter';
+        }
+        variable = new char(valorDeVariable[1], nombreDeVariable);
+    } else {
+        variable = new char(0, nombreDeVariable);
     }
-    variable = new char(valorDeVariable[1], nombreDeVariable);
     return variable;
 }
 
@@ -537,7 +542,6 @@ imprimirStdOut = async(texto) => {
                 console.log(variable);
             });
     }
-    console.log(variable);
     let etiqueta = document.createElement('p');
     etiqueta.style.color = 'white';
     let textoEtiqueta = document.createTextNode(variable);
@@ -719,8 +723,7 @@ eliminarScopeRamView = (variablesEliminadas) => {
     });
 }
 
-realizarOperación = async(texto, operador) => {
-    console.log(texto, operador);
+const realizarOperación = async(texto, operador) => {
     if (texto.length !== 2) {
         throw "Error: las operaciones deben tener dos variables";
     }
