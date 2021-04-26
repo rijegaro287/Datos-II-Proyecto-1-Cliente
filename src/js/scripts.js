@@ -83,7 +83,7 @@ const runningButtons = document.querySelector('#running-btns');
 const stopButton = document.querySelector('#stop-btn');
 const nextButton = document.querySelector('#next-btn');
 const editorTextArea = document.querySelector('#editor-text-area');
-const ramLiveViewLista = document.querySelector('#ram-live-view--lista');
+let ramLiveViewLista = document.querySelector('#ram-live-view--lista');
 const pestanaStdOut = document.querySelector('#std-out--opcion');
 const pestanaLog = document.querySelector('#log--opcion');
 const mensajesStdOut = document.querySelector('#std-out--mensajes');
@@ -108,13 +108,15 @@ let posicionEnTexto = 0;
 let creando = 'variables';
 let nombreStruct = '';
 let variablesEnStruct = [];
+let recorridoLineaALinea = [];
+let iteracionRecorridoLineaALinea = 0;
 
-const serverURL = 'http://localhost:9090';
+const serverURL = 'http://localhost:8080';
 
-post = async(ruta = '', mensajeJSON) => {
+post = async(ruta = '', mensajeJSON = {}) => {
     imprimirLog(`Enviando POST: ${JSON.stringify(mensajeJSON)} a la dirección: ${serverURL}/${ruta}`);
     try {
-        if (typeof mensajeJSON === 'string' || mensajeJSON instanceof String) {
+        if (isString(mensajeJSON)) {
             headersPOST.body = mensajeJSON;
         } else {
             headersPOST.body = JSON.stringify(mensajeJSON);
@@ -157,6 +159,8 @@ detenerEjecucion = async() => {
     nextButtonClicked = false;
     nombreStruct = '';
     variablesEnStruct = [];
+    recorridoLineaALinea = [];
+    iteracionRecorridoLineaALinea = 0;
 }
 
 imprimirLog = async(texto, error = false) => {
@@ -179,7 +183,9 @@ imprimirLog = async(texto, error = false) => {
 
 imprimirStdOut = async(texto) => {
     let variable;
-    if (texto[0] === '"' && texto[texto.length - 1] === '"') {
+    if (texto.includes('.getAddr()')) {
+        variable = await solicitarDireccionDeMemoria(texto.split('.')[0]);
+    } else if (texto[0] === '"' && texto[texto.length - 1] === '"') {
         variable = texto.slice(1, texto.length - 1);
     } else if ([...texto].includes('+')) {
         variable = await realizarOperación(texto.split('+'), '+');
@@ -200,12 +206,7 @@ imprimirStdOut = async(texto) => {
                 variable = JSON.parse(body).valor;
             });
     }
-    let etiqueta = document.createElement('p');
-    etiqueta.style.color = 'white';
-    let textoEtiqueta = document.createTextNode(variable);
-    etiqueta.appendChild(textoEtiqueta);
-    mensajesStdOut.appendChild(etiqueta);
-    mensajesStdOut.scrollTop = mensajesStdOut.scrollHeight;
+    recorridoLineaALinea.push(`print:${variable}`)
 }
 
 limpiarVentana = () => {
@@ -226,6 +227,7 @@ runButton.addEventListener('click', async e => {
         runningButtons.style.display = 'flex';
         await verificarConexion();
         await procesadoInicial();
+        ramLiveViewLista.innerHTML = '';
     } catch (error) {
         return imprimirLog(error, true);
     }
@@ -242,6 +244,27 @@ stopButton.addEventListener('click', async(e) => {
 
 nextButton.addEventListener('click', async e => {
     e.preventDefault();
+    if (iteracionRecorridoLineaALinea === recorridoLineaALinea.length) {
+        await detenerEjecucion();
+        return;
+    }
+    const elementosIteracionActual = recorridoLineaALinea[iteracionRecorridoLineaALinea];
+    if (isString(elementosIteracionActual)) {
+        const variable = elementosIteracionActual.split(':')[1];
+        let etiqueta = document.createElement('p');
+        etiqueta.style.color = 'white';
+        let textoEtiqueta = document.createTextNode(variable);
+        etiqueta.appendChild(textoEtiqueta);
+        mensajesStdOut.appendChild(etiqueta);
+        mensajesStdOut.scrollTop = mensajesStdOut.scrollHeight;
+    } else {
+        ramLiveViewLista.innerHTML = '';
+        for (let i = 0; i < elementosIteracionActual.length; i++) {
+            const elemento = elementosIteracionActual[i];
+            ramLiveViewLista.appendChild(elemento);
+        }
+    }
+    iteracionRecorridoLineaALinea++;
 });
 
 pestanaLog.addEventListener('click', e => {
@@ -278,6 +301,13 @@ procesadoInicial = async() => {
                 .then(body => {
                     imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
                     variable.direccionDeMemoria = JSON.parse(body).direccion;
+                    if (JSON.parse(body).hasOwnProperty('direccionDeVariable')) {
+                        variable.valor = JSON.parse(body).direccionDeVariable;
+                    } else if (JSON.parse(body).hasOwnProperty('direccionDeDatoApuntado')) {
+                        variable.valor = JSON.parse(body).direccionDeDatoApuntado;
+                    } else {
+                        variable.valor = JSON.parse(body).valor;
+                    }
                     variable.conteoDeReferencias = JSON.parse(body).conteoDeReferencias;
                     actualizarRamLiveView(variable);
                 });
@@ -339,12 +369,12 @@ procesarTexto = async(texto, posicionInicial) => {
 }
 
 procesarLinea = async(informacion) => {
-    console.log(informacion);
-
     for (let i = 0; i < informacion.length; i++) {
         let elemento = [...informacion[i]];
         informacion[i] = arrayToString(removerTodasLasOcurrencias(elemento, ' '), false);
     }
+
+    // console.log(informacion);
 
     const ultimaPalabra = informacion[informacion.length - 1];
 
@@ -384,12 +414,6 @@ procesarLinea = async(informacion) => {
                 return crearNumero(tipoDeVariable, nombreDeVariable, valorDeVariable);
         }
     }
-
-    // informacion.forEach(palabra => {
-    //     if (palabra.includes('.getAddr()')) {
-    //         console.log('hola');
-    //     }
-    // });
 }
 
 crearNumero = (tipoDeVariable, nombreDeVariable, valorDeVariable) => {
@@ -442,7 +466,10 @@ crearChar = (nombreDeVariable, valorDeVariable) => {
     return variable;
 }
 
-crearReferencia = (tipoDeVariable, nombreDeVariable, valorDeVariable = null) => {
+crearReferencia = (tipoDeVariable, nombreDeVariable, valorDeVariable = 0) => {
+    if (valorDeVariable !== 0 && valorDeVariable.includes('.getAddr()')) {
+        valorDeVariable = valorDeVariable.split('.')[0];
+    }
     let tipoDeReferencia = tipoDeVariable.split('reference');
     removerTodasLasOcurrencias(tipoDeReferencia, '');
     tipoDeReferencia = tipoDeReferencia[0];
@@ -527,6 +554,19 @@ const postCrearStruct = async(data = {}) => {
     }
 }
 
+solicitarDireccionDeMemoria = async(nombreDeVariable) => {
+    solicitudDireccionDeMemoria = {
+        nombre: nombreDeVariable
+    }
+    return await post('devolverDireccion', solicitudDireccionDeMemoria)
+    .then(response => response.text())
+    .then(body => {
+        imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+        return JSON.parse(body).direccion;
+    });
+
+}
+
 reasignarVariable = async(informacion) => {
     let elementosRamLiveView = document.querySelectorAll('#ram-live-view--lista .ram-live-view--elemento');
     let cambioEnServer = {
@@ -542,7 +582,42 @@ reasignarVariable = async(informacion) => {
             imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
             variableACambiar = JSON.parse(body);
         });
-    if (validarTipoDeDato(variableACambiar.tipoDeDato, informacion[2])) {
+
+    if (variableACambiar.tipoDeDato === 'referencia') {
+        cambioEnServer = {
+            nombreDePuntero: informacion[0],
+            nombreDeVariable: null
+        }
+        if (informacion[2].includes('.getAddr()')) {
+            cambioEnServer.nombreDeVariable = informacion[2].split('.')[0];
+        }else{
+            cambioEnServer.nombreDeVariable = informacion[2];
+        }
+        let variable = {};
+        await post('asignarDireccion', cambioEnServer)
+        .then(response => response.text())
+        .then(body => {
+            imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+            if (JSON.parse(body).hasOwnProperty('direccionDeVariable')) {
+                variable.valor = JSON.parse(body).direccionDeVariable;
+            } else if (JSON.parse(body).hasOwnProperty('direccionDeDatoApuntado')) {
+                variable.valor = JSON.parse(body).direccionDeDatoApuntado;
+            } else {
+                variable.valor = JSON.parse(body).valor;
+            }
+            variable.conteoDeReferenciasDeVariable = JSON.parse(body).conteoDeReferenciasDeVariable;
+        });
+        for (let i = 0; i < elementosRamLiveView.length; i++) {
+            const elemento = elementosRamLiveView[i];
+            if (elemento.children[2].innerHTML === informacion[0]) {
+                elemento.children[1].innerHTML = variable.valor;
+            }
+            else if (elemento.children[0].innerHTML === variable.valor) {
+                elemento.children[3].innerHTML = variable.conteoDeReferenciasDeVariable;
+            }
+        }
+    }
+    else if (validarTipoDeDato(variableACambiar.tipoDeDato, informacion[2])) {
         informacion[2] = informacion[2].replace(/['"]+/g, '');
         if (!isNaN(informacion[2])) {
             informacion[2] = Number(informacion[2]);
@@ -582,10 +657,10 @@ reasignarVariable = async(informacion) => {
             }
         }
     }
+    clonarEstadoRamLiveView();
 }
 
 realizarOperación = async(texto, operador) => {
-    console.log(texto);
     if (texto.length !== 2) {
         throw "Error: las operaciones deben tener dos variables";
     }
@@ -657,6 +732,7 @@ eliminarScopeRamView = (variablesEliminadas) => {
             }
         });
     });
+    clonarEstadoRamLiveView();
 }
 
 actualizarRamLiveView = variable => {
@@ -686,7 +762,17 @@ actualizarRamLiveView = variable => {
 
     ramLiveViewLista.appendChild(ramLiveViewElemento);
     ramLiveViewLista.scrollTop = ramLiveViewLista.scrollHeight;
+    
+    clonarEstadoRamLiveView();
+}
 
+clonarEstadoRamLiveView = () => {
+    let copiaRamView = [];
+    for (let i = 0; i < ramLiveViewLista.children.length; i++) {
+        const elemento = ramLiveViewLista.children[i];
+        copiaRamView.push(elemento.cloneNode(true));
+    }
+    recorridoLineaALinea.push(copiaRamView);
 }
 
 //Funciones de utilidad
@@ -726,4 +812,12 @@ arrayToString = (array, espacios = true) => {
         });
     }
     return string;
+}
+
+isString = string => {
+    if (typeof string === 'string' || string instanceof String) {
+        return true;
+    }else{
+        return false
+    }
 }
