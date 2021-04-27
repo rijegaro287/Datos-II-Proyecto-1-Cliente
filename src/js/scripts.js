@@ -5,10 +5,7 @@ class tipoDeDato {
         this.valor = valor;
         this.nombre = nombre;
         this.direccionDeMemoria = null;
-    }
-
-    getAddr() {
-        return this.direccionDeMemoria;
+        this.conteoDeReferencias = 0;
     }
 }
 
@@ -60,10 +57,7 @@ class reference {
         this.direccionDeMemoria = null;
         this.espacioEnMemoria = 4;
         this.nombre = nombre;
-    }
-
-    getValue() {
-        return
+        this.conteoDeReferencias = 0;
     }
 }
 
@@ -111,7 +105,7 @@ let variablesEnStruct = [];
 let recorridoLineaALinea = [];
 let iteracionRecorridoLineaALinea = 0;
 
-const serverURL = 'http://localhost:8080';
+const serverURL = 'http://localhost:9090';
 
 post = async(ruta = '', mensajeJSON = {}) => {
     imprimirLog(`Enviando POST: ${JSON.stringify(mensajeJSON)} a la dirección: ${serverURL}/${ruta}`);
@@ -185,6 +179,8 @@ imprimirStdOut = async(texto) => {
     let variable;
     if (texto.includes('.getAddr()')) {
         variable = await solicitarDireccionDeMemoria(texto.split('.')[0]);
+    } else if (texto.includes('.getValue()')) {
+        variable = await solicitarValorApuntado(texto.split('.')[0]);
     } else if (texto[0] === '"' && texto[texto.length - 1] === '"') {
         variable = texto.slice(1, texto.length - 1);
     } else if ([...texto].includes('+')) {
@@ -303,12 +299,27 @@ procesadoInicial = async() => {
                     variable.direccionDeMemoria = JSON.parse(body).direccion;
                     if (JSON.parse(body).hasOwnProperty('direccionDeVariable')) {
                         variable.valor = JSON.parse(body).direccionDeVariable;
+                        variable.nombreDeVariable = JSON.parse(body).nombreDeVariable
                     } else if (JSON.parse(body).hasOwnProperty('direccionDeDatoApuntado')) {
                         variable.valor = JSON.parse(body).direccionDeDatoApuntado;
                     } else {
                         variable.valor = JSON.parse(body).valor;
                     }
-                    variable.conteoDeReferencias = JSON.parse(body).conteoDeReferencias;
+                    if (JSON.parse(body).hasOwnProperty('conteoDeReferenciasDePuntero')) {
+                        let elementosRamLiveView = document.querySelectorAll('#ram-live-view--lista .ram-live-view--elemento');
+                        variable.conteoDeReferencias = JSON.parse(body).conteoDeReferenciasDePuntero;
+                        variable.conteoDeReferenciasDeVariable = JSON.parse(body).conteoDeReferenciasDeVariable;
+                        for (let i = 0; i < elementosRamLiveView.length; i++) {
+                            const elemento = elementosRamLiveView[i];
+                            if (elemento.children[2].innerHTML === variable.nombreDePuntero) {
+
+                            } else if (elemento.children[2].innerHTML === variable.nombreDeVariable) {
+                                elemento.children[3].innerHTML = variable.conteoDeReferenciasDeVariable;
+                            }
+                        }
+                    } else {
+                        variable.conteoDeReferencias = JSON.parse(body).conteoDeReferencias;
+                    }
                     actualizarRamLiveView(variable);
                 });
         }
@@ -317,6 +328,8 @@ procesadoInicial = async() => {
 
 procesarTexto = async(texto, posicionInicial) => {
     creando = 'variables';
+    let scopeCerrado = false;
+
     if (posicionInicial === texto.length) {
         await detenerEjecucion();
         return;
@@ -341,6 +354,7 @@ procesarTexto = async(texto, posicionInicial) => {
                     imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
                     eliminarScopeRamView(JSON.parse(body).nombreDeVariableEliminada);
                 });
+            scopeCerrado = true;
         } else if (caracter === '{' && informacion[0] === 'struct') {
             try {
                 informacion.push(palabra);
@@ -364,7 +378,9 @@ procesarTexto = async(texto, posicionInicial) => {
             palabra += caracter;
         }
     }
-    throw ('Error: falta ";" al final de una línea');
+    if (!scopeCerrado) {
+        throw ('Error: falta ";" al final de una línea');
+    }
 
 }
 
@@ -373,9 +389,6 @@ procesarLinea = async(informacion) => {
         let elemento = [...informacion[i]];
         informacion[i] = arrayToString(removerTodasLasOcurrencias(elemento, ' '), false);
     }
-
-    // console.log(informacion);
-
     const ultimaPalabra = informacion[informacion.length - 1];
 
     if (informacion.length > 4 || (informacion[0].includes('print(') && ultimaPalabra[ultimaPalabra.length - 1] !== ')')) {
@@ -389,6 +402,9 @@ procesarLinea = async(informacion) => {
     } else {
         informacion = removerTodasLasOcurrencias(informacion, '');
 
+        console.log(informacion);
+
+
         const tipoDeVariable = informacion[0];
         const nombreDeVariable = informacion[1];
         let valorDeVariable;
@@ -398,8 +414,23 @@ procesarLinea = async(informacion) => {
         } else {
             valorDeVariable = informacion[3];
         }
+        if (valorDeVariable !== 0 && valorDeVariable.includes('.getValue()')) {
+            try {
+                await solicitarValorApuntado(valorDeVariable.split('.')[0]);
+            } catch (error) { throw error }
+            const solicitudDesreferenciarPuntero = {
+                nombre: valorDeVariable.split('.')[0]
+            }
+            await post('desreferenciarPuntero', solicitudDesreferenciarPuntero)
+                .then(response => response.text())
+                .then(body => {
+                    valorDeVariable = JSON.parse(body).valor
+                });
+            if (isNaN(valorDeVariable) && valorDeVariable.length === 1) {
+                valorDeVariable = `"${valorDeVariable}"`;
+            }
 
-        if (tipoDeVariable.split('<').includes('reference')) {
+        } else if (tipoDeVariable.split('<').includes('reference')) {
             return crearReferencia(tipoDeVariable, nombreDeVariable, valorDeVariable);
         } else if (informacion[2] !== '=' && valorDeVariable !== 0) {
             throw `Error: Variable "${nombreDeVariable}" mal declarada.`;
@@ -422,7 +453,7 @@ crearNumero = (tipoDeVariable, nombreDeVariable, valorDeVariable) => {
     try {
         valorDeVariable = math.evaluate(valorDeVariable);
     } catch (error) {
-        throw 'Error: Variable mal declarada';
+        throw `Error: Variable mal declarada. Los ${tipoDeVariable} deben ser números`;
     }
 
     switch (tipoDeVariable) {
@@ -554,7 +585,7 @@ const postCrearStruct = async(data = {}) => {
     }
 }
 
-solicitarDireccionDeMemoria = async(nombreDeVariable) => {
+solicitarDireccionDeMemoria = async(nombreDeVariable) => { // -> Falta que solamente los tipos primitivos puedan usarla
     solicitudDireccionDeMemoria = {
         nombre: nombreDeVariable
     }
@@ -562,12 +593,48 @@ solicitarDireccionDeMemoria = async(nombreDeVariable) => {
     .then(response => response.text())
     .then(body => {
         imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
-        return JSON.parse(body).direccion;
+        if(JSON.parse(body).tipoDeDato === 'referencia'){
+            throw 'Error: la operación getAddr() sólo es soportada por tipos de dato primitivos'
+        }else{
+            return JSON.parse(body).direccion;
+        }
+    });
+
+}
+
+solicitarValorApuntado = async(nombreDePuntero) => {
+    solicitudDesreferenciarPuntero = {
+        nombre: nombreDePuntero
+    }
+    return await post('desreferenciarPuntero', solicitudDesreferenciarPuntero)
+    .then(response => response.text())
+    .then(body => {
+        imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+        try {            
+            if(JSON.parse(body).tipoDeDato === ''){
+                throw 'Error: La operación getValue sólo es soportada por referencias';
+            }else{
+                return JSON.parse(body).valor;
+            }
+        } catch (error) {
+            throw 'Error: La operación getValue sólo es soportada por referencias';
+        }
     });
 
 }
 
 reasignarVariable = async(informacion) => {
+    if(informacion[2].includes('.getAddr()')){
+        try {
+            await solicitarDireccionDeMemoria(informacion[2].split('.')[0]);
+        } catch (error) { throw error }
+    }else if(informacion[2].includes('.getValue()')){
+        informacion[2] = await solicitarValorApuntado(informacion[2].split('.')[0]);
+        if(isNaN(informacion[2])){
+            informacion[2] = `"${informacion[2]}"`
+        }
+    }
+
     let elementosRamLiveView = document.querySelectorAll('#ram-live-view--lista .ram-live-view--elemento');
     let cambioEnServer = {
         nombre: informacion[0],
@@ -606,11 +673,13 @@ reasignarVariable = async(informacion) => {
                 variable.valor = JSON.parse(body).valor;
             }
             variable.conteoDeReferenciasDeVariable = JSON.parse(body).conteoDeReferenciasDeVariable;
+            variable.conteoDeReferenciasDePuntero = JSON.parse(body).conteoDeReferenciasDePuntero;
         });
         for (let i = 0; i < elementosRamLiveView.length; i++) {
             const elemento = elementosRamLiveView[i];
             if (elemento.children[2].innerHTML === informacion[0]) {
                 elemento.children[1].innerHTML = variable.valor;
+                elemento.children[3].innerHTML = variable.conteoDeReferenciasDePuntero;
             }
             else if (elemento.children[0].innerHTML === variable.valor) {
                 elemento.children[3].innerHTML = variable.conteoDeReferenciasDeVariable;
@@ -618,7 +687,9 @@ reasignarVariable = async(informacion) => {
         }
     }
     else if (validarTipoDeDato(variableACambiar.tipoDeDato, informacion[2])) {
-        informacion[2] = informacion[2].replace(/['"]+/g, '');
+        try {
+            informacion[2] = informacion[2].replace(/['"]+/g, '');
+        } catch (error) {}
         if (!isNaN(informacion[2])) {
             informacion[2] = Number(informacion[2]);
         }
@@ -752,7 +823,7 @@ actualizarRamLiveView = variable => {
     ramLiveViewPDireccion.appendChild(ramLiveViewPDireccionTexto);
 
     let ramLiveViewPRefs = document.createElement('p');
-    let ramLiveViewPRefsTexto = document.createTextNode(variable.conteoDeReferencias);
+    let ramLiveViewPRefsTexto = document.createTextNode(0);
     ramLiveViewPRefs.appendChild(ramLiveViewPRefsTexto);
 
     ramLiveViewElemento.appendChild(ramLiveViewPDireccion);
