@@ -1,4 +1,5 @@
 const math = require('mathjs');
+const { accessSync } = require('original-fs');
 
 /**
  * Representa un tipo de dato primitivo
@@ -116,6 +117,7 @@ class reference {
         this.tipoDeDato = 'referencia';
         this.tipoDeReferencia = tipoDeReferencia;
         this.valor = valor;
+        this.valorApuntado = null;
         this.direccionDeMemoria = null;
         this.espacioEnMemoria = 4;
         this.nombre = nombre;
@@ -174,7 +176,7 @@ let recorridoLineaALinea = [];
 let iteracionRecorridoLineaALinea = 0;
 let structCerrado = false;
 
-const serverURL = 'http://localhost:9090';
+const serverURL = 'http://localhost:8080';
 
 /**
  * Hace una solicitud al server con el método HTTP POST
@@ -273,6 +275,8 @@ const imprimirStdOut = async(texto) => {
         variable = await solicitarDireccionDeMemoria(texto.split('.')[0]);
     } else if (texto.includes('.getValue()')) {
         variable = await solicitarValorApuntado(texto.split('.')[0]);
+    } else if (texto.includes('.')) {
+        variable = await solicitarAtributoEnStruct(texto.split('.')[0], texto.split('.')[1]);
     } else if (texto[0] === '"' && texto[texto.length - 1] === '"') {
         variable = texto.slice(1, texto.length - 1);
     } else if ([...texto].includes('+')) {
@@ -438,7 +442,8 @@ const procesadoInicial = async() => {
                                 const elemento = elementosRamLiveView[i];
                                 if (elemento.children[2].innerHTML === variable.nombreDePuntero) {
 
-                                } else if (elemento.children[2].innerHTML === variable.nombreDeVariable) {
+                                }
+                                if (elemento.children[2].innerHTML === variable.nombreDeVariable) {
                                     elemento.children[3].innerHTML = variable.conteoDeReferenciasDeVariable;
                                 }
                             }
@@ -461,6 +466,7 @@ const procesadoInicial = async() => {
 const procesarTexto = async(texto, posicionInicial) => {
     creando = 'variables';
     let scopeCerrado = false;
+    structCerrado = false;
 
     if (posicionInicial === texto.length) {
         await detenerEjecucion();
@@ -486,6 +492,7 @@ const procesarTexto = async(texto, posicionInicial) => {
                     imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
                     eliminarScopeRamView(JSON.parse(body).nombreDeVariableEliminada);
                 });
+            posicionEnTexto += 1
             scopeCerrado = true;
         } else if (caracter === '{' && informacion[0] === 'struct') {
             informacion.push(palabra);
@@ -517,7 +524,6 @@ const procesarTexto = async(texto, posicionInicial) => {
  * @returns El resultado de ejecutar la línea
  */
 const procesarLinea = async(informacion) => {
-    console.log(informacion);
     for (let i = 0; i < informacion.length; i++) {
         let elemento = [...informacion[i]];
         informacion[i] = arrayToString(removerTodasLasOcurrencias(elemento, ' '), false);
@@ -535,6 +541,8 @@ const procesarLinea = async(informacion) => {
     } else {
         informacion = removerTodasLasOcurrencias(informacion, '');
 
+        console.log(informacion);
+
         const tipoDeVariable = informacion[0];
         const nombreDeVariable = informacion[1];
         let valorDeVariable;
@@ -550,8 +558,13 @@ const procesarLinea = async(informacion) => {
                 valorDeVariable = `"${valorDeVariable}"`;
             }
 
+        } else if (tipoDeVariable === 'struct') {
+            let solicitudCrearStruct = {
+
+            }
+            await post('createStruct', )
         } else if (tipoDeVariable.split('<').includes('reference')) {
-            return crearReferencia(tipoDeVariable, nombreDeVariable, valorDeVariable);
+            return await crearReferencia(tipoDeVariable, nombreDeVariable, valorDeVariable);
         } else if (informacion[2] !== '=' && valorDeVariable !== 0) {
             throw `Error: Variable "${nombreDeVariable}" mal declarada.`;
         } else if (valoresReservados.includes(nombreDeVariable)) {
@@ -637,10 +650,11 @@ const crearChar = (nombreDeVariable, valorDeVariable) => {
  * @param {*} valorDeVariable La dirección de memoria a la que apunta la referencia
  * @returns Una instancia de la referencia creada
  */
-const crearReferencia = (tipoDeVariable, nombreDeVariable, valorDeVariable = 0) => {
+const crearReferencia = async(tipoDeVariable, nombreDeVariable, valorDeVariable = 0) => {
     if (valorDeVariable !== 0 && valorDeVariable.includes('.getAddr()')) {
-        valorDeVariable = valorDeVariable.split('.')[0];
+        valorDeVariable = await solicitarDireccionDeMemoria(valorDeVariable.split('.')[0]);
     }
+
     let tipoDeReferencia = tipoDeVariable.split('reference');
     removerTodasLasOcurrencias(tipoDeReferencia, '');
     tipoDeReferencia = tipoDeReferencia[0];
@@ -664,7 +678,6 @@ const crearReferencia = (tipoDeVariable, nombreDeVariable, valorDeVariable = 0) 
  */
 const crearStruct = (informacion, texto, posicionInicial) => {
     creando = 'struct';
-    structCerrado = false;
     informacion = removerTodasLasOcurrencias(informacion, '');
     nombreStruct = informacion[1];
     if (valoresReservados.includes(nombreStruct)) {
@@ -761,6 +774,31 @@ const solicitarValorApuntado = async(nombreDePuntero) => {
             }
         });
 
+}
+
+/**
+ * Hace una llamada al servidor solicitando un atributo de un struct
+ * @param {string} nombreDeStruct Nombre del struct que se desea accesar 
+ * @param {string} nombreDeVariable Nombre de la variable a buscar dentro del struct
+ * @returns El valor del atributo
+ */
+const solicitarAtributoEnStruct = async(nombreDeStruct, nombreDeVariable) => {
+    let elementosRamLiveView = document.querySelectorAll('#ram-live-view--lista .ram-live-view--elemento');
+    for (let i = 0; i < elementosRamLiveView.length; i++) {
+        const elemento = elementosRamLiveView[i];
+        if (`${nombreDeStruct}.${nombreDeVariable}` === elemento.children[2].innerHTML) {
+            const solicitudAtributoEnStruct = {
+                nombre: nombreDeVariable,
+                nombreDeStruct: nombreDeStruct
+            }
+            return await post('retornarAtributoDeStruct', solicitudAtributoEnStruct)
+                .then(response => response.text())
+                .then(body => {
+                    imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                    return JSON.parse(body).valor;
+                })
+        }
+    }
 }
 
 /**
@@ -883,25 +921,13 @@ const reasignarVariable = async(informacion) => {
  * @param {array} informacion Un array con la línea en la que se reasigna la variable 
  * @returns Un promise con la respuesta del servidor
  */
-const reasignarVariableEnStruct = async informacion => {
-    console.log(informacion);
-    let elementosRamLiveView = document.querySelectorAll('#ram-live-view--lista .ram-live-view--elemento');
-    for (let i = 0; i < elementosRamLiveView.length; i++) {
-        const elemento = elementosRamLiveView[i];
-        if (informacion[0] === elemento.children[2].innerHTML) {
-            const solicitudAtributoEnStruct = {
-                nombre: informacion[0].split('.')[1],
-                nombreDeStruct: informacion[0].split('.')[0]
-            }
-            await post('retornarAtributoDeStruct', solicitudAtributoEnStruct)
-                .then(response => response.text())
-                .then(body => {
-                    imprimirLog(body);
-                })
-        }
-
-    }
-}
+// const reasignarVariableEnStruct = async informacion => {
+//     console.log(informacion);
+//     let elementosRamLiveView = document.querySelectorAll('#ram-live-view--lista .ram-live-view--elemento');
+//     for (let i = 0; i < elementosRamLiveView.length; i++) {
+//         const elemento = elementosRamLiveView[i];
+//     }
+// }
 
 /**
  * Realiza una operación entre variables
