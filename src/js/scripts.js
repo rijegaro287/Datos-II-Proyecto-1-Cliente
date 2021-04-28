@@ -1,5 +1,4 @@
 const math = require('mathjs');
-const { accessSync } = require('original-fs');
 
 /**
  * Representa un tipo de dato primitivo
@@ -240,6 +239,7 @@ const detenerEjecucion = async() => {
     recorridoLineaALinea = [];
     iteracionRecorridoLineaALinea = 0;
     structCerrado = false;
+    return;
 }
 
 /**
@@ -530,6 +530,23 @@ const procesarLinea = async(informacion) => {
     }
     const ultimaPalabra = informacion[informacion.length - 1];
 
+    try {
+        if (informacion[3] !== undefined && isNaN(informacion[3]) && !informacion[3].includes('.')) {
+            solicitudDeVariable = {
+                nombre: informacion[3]
+            }
+            await post('devolverVariable', solicitudDeVariable)
+                .then(response => response.text())
+                .then(body => {
+                    imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                    informacion[3] = JSON.parse(body).valor;
+                    if (isNaN(informacion[3]) && informacion[3].length === 1) {
+                        informacion[3] = `"${informacion[3]}"`;
+                    }
+                });
+        }
+    } catch (error) {}
+
     if (informacion.length > 4 || (informacion[0].includes('print(') && ultimaPalabra[ultimaPalabra.length - 1] !== ')')) {
         throw ('Error: falta ";" al final de una línea');
     } else if (informacion[0].slice(0, 6) + ultimaPalabra[ultimaPalabra.length - 1] === 'print()') {
@@ -552,7 +569,7 @@ const procesarLinea = async(informacion) => {
         } else {
             valorDeVariable = informacion[3];
         }
-        if (valorDeVariable !== 0 && valorDeVariable.includes('.getValue()')) {
+        if (isNaN(valorDeVariable) && valorDeVariable.includes('.getValue()')) {
             valorDeVariable = await solicitarValorApuntado(valorDeVariable.split('.')[0]);
             if (isNaN(valorDeVariable) && valorDeVariable.length === 1) {
                 valorDeVariable = `"${valorDeVariable}"`;
@@ -560,7 +577,7 @@ const procesarLinea = async(informacion) => {
 
         } else if (tipoDeVariable === 'struct') {
             let solicitudCrearStruct = {
-
+                // Falta crear structs con otros structs
             }
             await post('createStruct', )
         } else if (tipoDeVariable.split('<').includes('reference')) {
@@ -852,6 +869,7 @@ const reasignarVariable = async(informacion) => {
             .then(response => response.text())
             .then(body => {
                 imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                console.log(JSON.parse(body).datoAntiguo);
                 if (JSON.parse(body).hasOwnProperty('direccionDeVariable')) {
                     variable.valor = JSON.parse(body).direccionDeVariable;
                 } else if (JSON.parse(body).hasOwnProperty('direccionDeDatoApuntado')) {
@@ -861,16 +879,21 @@ const reasignarVariable = async(informacion) => {
                 }
                 variable.conteoDeReferenciasDeVariable = JSON.parse(body).conteoDeReferenciasDeVariable;
                 variable.conteoDeReferenciasDePuntero = JSON.parse(body).conteoDeReferenciasDePuntero;
+                for (let i = 0; i < elementosRamLiveView.length; i++) {
+                    const elemento = elementosRamLiveView[i];
+                    if (JSON.parse(body).hasOwnProperty('datoAntiguo')) {
+                        if (elemento.children[2].innerHTML === JSON.parse(body).datoAntiguo.nombre) {
+                            elemento.children[3].innerHTML -= 1;
+                        }
+                    }
+                    if (elemento.children[2].innerHTML === informacion[0]) {
+                        elemento.children[1].innerHTML = variable.valor;
+                        elemento.children[3].innerHTML = variable.conteoDeReferenciasDePuntero;
+                    } else if (elemento.children[0].innerHTML === variable.valor) {
+                        elemento.children[3].innerHTML = variable.conteoDeReferenciasDeVariable;
+                    }
+                }
             });
-        for (let i = 0; i < elementosRamLiveView.length; i++) {
-            const elemento = elementosRamLiveView[i];
-            if (elemento.children[2].innerHTML === informacion[0]) {
-                elemento.children[1].innerHTML = variable.valor;
-                elemento.children[3].innerHTML = variable.conteoDeReferenciasDePuntero;
-            } else if (elemento.children[0].innerHTML === variable.valor) {
-                elemento.children[3].innerHTML = variable.conteoDeReferenciasDeVariable;
-            }
-        }
     } else if (validarTipoDeDato(variableACambiar.tipoDeDato, informacion[2])) {
         try {
             informacion[2] = informacion[2].replace(/['"]+/g, '');
@@ -921,13 +944,32 @@ const reasignarVariable = async(informacion) => {
  * @param {array} informacion Un array con la línea en la que se reasigna la variable 
  * @returns Un promise con la respuesta del servidor
  */
-// const reasignarVariableEnStruct = async informacion => {
-//     console.log(informacion);
-//     let elementosRamLiveView = document.querySelectorAll('#ram-live-view--lista .ram-live-view--elemento');
-//     for (let i = 0; i < elementosRamLiveView.length; i++) {
-//         const elemento = elementosRamLiveView[i];
-//     }
-// }
+const reasignarVariableEnStruct = async informacion => {
+    console.log(informacion);
+    if (isNaN(informacion[2])) {
+        informacion[2] = informacion[2].replace(/['"]+/g, '');
+    } else {
+        informacion[2] = Number(informacion[2]);
+    }
+    let elementosRamLiveView = document.querySelectorAll('#ram-live-view--lista .ram-live-view--elemento');
+    solicitudReasignacionDeAtributo = {
+        nombreDeStruct: informacion[0].split('.')[0],
+        nombre: informacion[0].split('.')[1],
+        valor: informacion[2]
+    }
+    for (let i = 0; i < elementosRamLiveView.length; i++) {
+        const elemento = elementosRamLiveView[i];
+        if (elemento.children[2].innerHTML === informacion[0]) {
+            elemento.children[1].innerHTML = informacion[2];
+            await post('actualizarAtributoDeStruct', solicitudReasignacionDeAtributo)
+                .then(response => response.text())
+                .then(body => {
+                    imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                });
+        }
+    }
+    clonarEstadoRamLiveView();
+}
 
 /**
  * Realiza una operación entre variables
