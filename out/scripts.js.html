@@ -144,6 +144,7 @@ class reference {
         this.tipoDeDato = 'referencia';
         this.tipoDeReferencia = tipoDeReferencia;
         this.valor = valor;
+        this.valorApuntado = null;
         this.direccionDeMemoria = null;
         this.espacioEnMemoria = 4;
         this.nombre = nombre;
@@ -202,7 +203,7 @@ let recorridoLineaALinea = [];
 let iteracionRecorridoLineaALinea = 0;
 let structCerrado = false;
 
-const serverURL = 'http://localhost:9090';
+const serverURL = 'http://localhost:8080';
 
 /**
  * Hace una solicitud al server con el método HTTP POST
@@ -239,10 +240,15 @@ const verificarConexion = async() => {
         descripcion: 'Conectando...'
     };
 
-    await post('conexionInicial', solicitudDeInicio)
-        .then(response => response.text())
-        .then(body =>
-            imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`));
+    try {
+        await post('conexionInicial', solicitudDeInicio)
+            .then(response => response.text())
+            .then(body =>
+                imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`));
+
+    } catch (error) {
+        await detenerEjecucion();
+    }
 }
 
 /**
@@ -252,10 +258,14 @@ const detenerEjecucion = async() => {
     const solicitudDeFinalizacion = {
         descripcion: 'Finalizando ejecución...'
     };
-    await post('finalizarEjecucion', solicitudDeFinalizacion)
-        .then(response => response.text())
-        .then(body =>
-            imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`));
+    try {
+        await post('finalizarEjecucion', solicitudDeFinalizacion)
+            .then(response => response.text())
+            .then(body =>
+                imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`));
+    } catch (error) {
+        imprimirLog(error, true, false);
+    }
 
     runningButtons.style.display = 'none';
     runButton.style.display = 'block';
@@ -266,14 +276,16 @@ const detenerEjecucion = async() => {
     recorridoLineaALinea = [];
     iteracionRecorridoLineaALinea = 0;
     structCerrado = false;
+    return;
 }
 
 /**
  * Imprime el texto en la sección de Log del IDE. Si error = true, el mensaje se muestra en rojo
  * @param {string} texto El mensaje que se desea mostrar en el Log
  * @param {boolean} error Indica si el mensaje es un error
+ * @param {boolean} finalizarEjecucion Indica si es necesario finalizar la ejecución tras mostrar el error
  */
-const imprimirLog = async(texto, error = false) => {
+const imprimirLog = async(texto, error = false, finalizarEjecucion = true) => {
     let etiqueta = document.createElement('p');
     let textoEtiqueta = document.createTextNode(texto);
     etiqueta.appendChild(textoEtiqueta);
@@ -285,7 +297,9 @@ const imprimirLog = async(texto, error = false) => {
         mensajesLog.style.display = 'block';
         pestanaLog.style.backgroundColor = 'rgba(0, 0, 0, 0.4)';
         pestanaStdOut.style.backgroundColor = 'inherit';
-        await detenerEjecucion();
+        if (finalizarEjecucion) {
+            await detenerEjecucion();
+        }
     } else {
         etiqueta.style.color = 'yellow';
     }
@@ -301,6 +315,8 @@ const imprimirStdOut = async(texto) => {
         variable = await solicitarDireccionDeMemoria(texto.split('.')[0]);
     } else if (texto.includes('.getValue()')) {
         variable = await solicitarValorApuntado(texto.split('.')[0]);
+    } else if (texto.includes('.')) {
+        variable = await solicitarAtributoEnStruct(texto.split('.')[0], texto.split('.')[1]);
     } else if (texto[0] === '"' &amp;&amp; texto[texto.length - 1] === '"') {
         variable = texto.slice(1, texto.length - 1);
     } else if ([...texto].includes('+')) {
@@ -315,6 +331,7 @@ const imprimirStdOut = async(texto) => {
         variable = {
             nombre: texto
         }
+        console.log(variable);
         await post('devolverVariable', variable)
             .then(response => response.text())
             .then(body => {
@@ -323,6 +340,7 @@ const imprimirStdOut = async(texto) => {
             });
     }
     recorridoLineaALinea.push(`print:${variable}`)
+    return;
 }
 
 
@@ -466,7 +484,8 @@ const procesadoInicial = async() => {
                                 const elemento = elementosRamLiveView[i];
                                 if (elemento.children[2].innerHTML === variable.nombreDePuntero) {
 
-                                } else if (elemento.children[2].innerHTML === variable.nombreDeVariable) {
+                                }
+                                if (elemento.children[2].innerHTML === variable.nombreDeVariable) {
                                     elemento.children[3].innerHTML = variable.conteoDeReferenciasDeVariable;
                                 }
                             }
@@ -489,6 +508,7 @@ const procesadoInicial = async() => {
 const procesarTexto = async(texto, posicionInicial) => {
     creando = 'variables';
     let scopeCerrado = false;
+    structCerrado = false;
 
     if (posicionInicial === texto.length) {
         await detenerEjecucion();
@@ -514,7 +534,9 @@ const procesarTexto = async(texto, posicionInicial) => {
                     imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
                     eliminarScopeRamView(JSON.parse(body).nombreDeVariableEliminada);
                 });
+            posicionEnTexto += 1
             scopeCerrado = true;
+
         } else if (caracter === '{' &amp;&amp; informacion[0] === 'struct') {
             informacion.push(palabra);
             posicionEnTexto += 1;
@@ -536,7 +558,6 @@ const procesarTexto = async(texto, posicionInicial) => {
     if (!scopeCerrado &amp;&amp; !structCerrado) {
         throw ('Error: falta ";" al final de una línea');
     }
-
 }
 
 /**
@@ -552,9 +573,25 @@ const procesarLinea = async(informacion) => {
     }
     const ultimaPalabra = informacion[informacion.length - 1];
 
-    if (informacion.length > 4 || (informacion[0].includes('print(') &amp;&amp; ultimaPalabra[ultimaPalabra.length - 1] !== ')')) {
-        throw ('Error: falta ";" al final de una línea');
-    } else if (informacion[0].slice(0, 6) + ultimaPalabra[ultimaPalabra.length - 1] === 'print()') {
+    try {
+        if (informacion.length === 4 &amp;&amp; informacion[3] !== undefined &amp;&amp; isNaN(informacion[3]) &amp;&amp; !informacion[3].includes('.') &amp;&amp; !informacion[3].includes('"')) {
+            solicitudDeVariable = {
+                nombre: informacion[3].replace(/['"]+/g, '')
+            }
+            await post('devolverVariable', solicitudDeVariable)
+                .then(response => response.text())
+                .then(body => {
+                    imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                    informacion[3] = JSON.parse(body).valor;
+                    if (isNaN(informacion[3]) &amp;&amp; informacion[3].length === 1) {
+                        informacion[3] = `"${informacion[3]}"`;
+                    }
+                    console.log(informacion[3]);
+                });
+        }
+    } catch (error) {}
+
+    if (informacion[0].slice(0, 6) + ultimaPalabra[ultimaPalabra.length - 1] === 'print()') {
         informacionString = arrayToString(informacion);
         return imprimirStdOut(informacionString.slice(7, informacionString.length - 1));
     } else if (informacion[1] === '=' &amp;&amp; informacion.length === 3) {
@@ -562,6 +599,8 @@ const procesarLinea = async(informacion) => {
         return;
     } else {
         informacion = removerTodasLasOcurrencias(informacion, '');
+
+        console.log(informacion);
 
         const tipoDeVariable = informacion[0];
         const nombreDeVariable = informacion[1];
@@ -572,14 +611,19 @@ const procesarLinea = async(informacion) => {
         } else {
             valorDeVariable = informacion[3];
         }
-        if (valorDeVariable !== 0 &amp;&amp; valorDeVariable.includes('.getValue()')) {
+        if (isNaN(valorDeVariable) &amp;&amp; valorDeVariable.includes('.getValue()')) {
             valorDeVariable = await solicitarValorApuntado(valorDeVariable.split('.')[0]);
             if (isNaN(valorDeVariable) &amp;&amp; valorDeVariable.length === 1) {
                 valorDeVariable = `"${valorDeVariable}"`;
             }
 
+        } else if (tipoDeVariable === 'struct') {
+            let solicitudCrearStruct = {
+                // Falta crear structs con otros structs
+            }
+            await post('createStruct', )
         } else if (tipoDeVariable.split('&lt;').includes('reference')) {
-            return crearReferencia(tipoDeVariable, nombreDeVariable, valorDeVariable);
+            return await crearReferencia(tipoDeVariable, nombreDeVariable, valorDeVariable);
         } else if (informacion[2] !== '=' &amp;&amp; valorDeVariable !== 0) {
             throw `Error: Variable "${nombreDeVariable}" mal declarada.`;
         } else if (valoresReservados.includes(nombreDeVariable)) {
@@ -665,10 +709,11 @@ const crearChar = (nombreDeVariable, valorDeVariable) => {
  * @param {*} valorDeVariable La dirección de memoria a la que apunta la referencia
  * @returns Una instancia de la referencia creada
  */
-const crearReferencia = (tipoDeVariable, nombreDeVariable, valorDeVariable = 0) => {
+const crearReferencia = async(tipoDeVariable, nombreDeVariable, valorDeVariable = 0) => {
     if (valorDeVariable !== 0 &amp;&amp; valorDeVariable.includes('.getAddr()')) {
-        valorDeVariable = valorDeVariable.split('.')[0];
+        valorDeVariable = await solicitarDireccionDeMemoria(valorDeVariable.split('.')[0]);
     }
+
     let tipoDeReferencia = tipoDeVariable.split('reference');
     removerTodasLasOcurrencias(tipoDeReferencia, '');
     tipoDeReferencia = tipoDeReferencia[0];
@@ -692,7 +737,6 @@ const crearReferencia = (tipoDeVariable, nombreDeVariable, valorDeVariable = 0) 
  */
 const crearStruct = (informacion, texto, posicionInicial) => {
     creando = 'struct';
-    structCerrado = false;
     informacion = removerTodasLasOcurrencias(informacion, '');
     nombreStruct = informacion[1];
     if (valoresReservados.includes(nombreStruct)) {
@@ -792,6 +836,31 @@ const solicitarValorApuntado = async(nombreDePuntero) => {
 }
 
 /**
+ * Hace una llamada al servidor solicitando un atributo de un struct
+ * @param {string} nombreDeStruct Nombre del struct que se desea accesar 
+ * @param {string} nombreDeVariable Nombre de la variable a buscar dentro del struct
+ * @returns El valor del atributo
+ */
+const solicitarAtributoEnStruct = async(nombreDeStruct, nombreDeVariable) => {
+    let elementosRamLiveView = document.querySelectorAll('#ram-live-view--lista .ram-live-view--elemento');
+    for (let i = 0; i &lt; elementosRamLiveView.length; i++) {
+        const elemento = elementosRamLiveView[i];
+        if (`${nombreDeStruct}.${nombreDeVariable}` === elemento.children[2].innerHTML) {
+            const solicitudAtributoEnStruct = {
+                nombre: nombreDeVariable,
+                nombreDeStruct: nombreDeStruct
+            }
+            return await post('retornarAtributoDeStruct', solicitudAtributoEnStruct)
+                .then(response => response.text())
+                .then(body => {
+                    imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                    return JSON.parse(body).valor;
+                })
+        }
+    }
+}
+
+/**
  * Cambia el valor de una variable
  * @param {array} informacion Un array con la línea en la que se reasigna la variable 
  * @returns Un promise con la respuesta del servidor
@@ -820,6 +889,7 @@ const reasignarVariable = async(informacion) => {
     let variableACambiar = {
         nombre: informacion[0]
     }
+    console.log(variableACambiar);
     await post('devolverVariable', variableACambiar)
         .then(response => response.text())
         .then(body => {
@@ -842,6 +912,7 @@ const reasignarVariable = async(informacion) => {
             .then(response => response.text())
             .then(body => {
                 imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                console.log(JSON.parse(body).datoAntiguo);
                 if (JSON.parse(body).hasOwnProperty('direccionDeVariable')) {
                     variable.valor = JSON.parse(body).direccionDeVariable;
                 } else if (JSON.parse(body).hasOwnProperty('direccionDeDatoApuntado')) {
@@ -851,16 +922,21 @@ const reasignarVariable = async(informacion) => {
                 }
                 variable.conteoDeReferenciasDeVariable = JSON.parse(body).conteoDeReferenciasDeVariable;
                 variable.conteoDeReferenciasDePuntero = JSON.parse(body).conteoDeReferenciasDePuntero;
+                for (let i = 0; i &lt; elementosRamLiveView.length; i++) {
+                    const elemento = elementosRamLiveView[i];
+                    if (JSON.parse(body).hasOwnProperty('datoAntiguo')) {
+                        if (elemento.children[2].innerHTML === JSON.parse(body).datoAntiguo.nombre) {
+                            elemento.children[3].innerHTML -= 1;
+                        }
+                    }
+                    if (elemento.children[2].innerHTML === informacion[0]) {
+                        elemento.children[1].innerHTML = variable.valor;
+                        elemento.children[3].innerHTML = variable.conteoDeReferenciasDePuntero;
+                    } else if (elemento.children[0].innerHTML === variable.valor) {
+                        elemento.children[3].innerHTML = variable.conteoDeReferenciasDeVariable;
+                    }
+                }
             });
-        for (let i = 0; i &lt; elementosRamLiveView.length; i++) {
-            const elemento = elementosRamLiveView[i];
-            if (elemento.children[2].innerHTML === informacion[0]) {
-                elemento.children[1].innerHTML = variable.valor;
-                elemento.children[3].innerHTML = variable.conteoDeReferenciasDePuntero;
-            } else if (elemento.children[0].innerHTML === variable.valor) {
-                elemento.children[3].innerHTML = variable.conteoDeReferenciasDeVariable;
-            }
-        }
     } else if (validarTipoDeDato(variableACambiar.tipoDeDato, informacion[2])) {
         try {
             informacion[2] = informacion[2].replace(/['"]+/g, '');
@@ -882,6 +958,7 @@ const reasignarVariable = async(informacion) => {
         let nuevoValor = {
             nombre: informacion[2]
         }
+        console.log(nuevoValor);
         await post('devolverVariable', nuevoValor)
             .then(response => response.text())
             .then(body => {
@@ -913,22 +990,29 @@ const reasignarVariable = async(informacion) => {
  */
 const reasignarVariableEnStruct = async informacion => {
     console.log(informacion);
+    if (isNaN(informacion[2])) {
+        informacion[2] = informacion[2].replace(/['"]+/g, '');
+    } else {
+        informacion[2] = Number(informacion[2]);
+    }
     let elementosRamLiveView = document.querySelectorAll('#ram-live-view--lista .ram-live-view--elemento');
+    solicitudReasignacionDeAtributo = {
+        nombreDeStruct: informacion[0].split('.')[0],
+        nombre: informacion[0].split('.')[1],
+        valor: informacion[2]
+    }
     for (let i = 0; i &lt; elementosRamLiveView.length; i++) {
         const elemento = elementosRamLiveView[i];
-        if (informacion[0] === elemento.children[2].innerHTML) {
-            const solicitudAtributoEnStruct = {
-                nombre: informacion[0].split('.')[1],
-                nombreDeStruct: informacion[0].split('.')[0]
-            }
-            await post('retornarAtributoDeStruct', solicitudAtributoEnStruct)
+        if (elemento.children[2].innerHTML === informacion[0]) {
+            elemento.children[1].innerHTML = informacion[2];
+            await post('actualizarAtributoDeStruct', solicitudReasignacionDeAtributo)
                 .then(response => response.text())
                 .then(body => {
-                    imprimirLog(body);
-                })
+                    imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
+                });
         }
-
     }
+    clonarEstadoRamLiveView();
 }
 
 /**
@@ -952,12 +1036,14 @@ const realizarOperación = async(texto, operador) => {
     }
 
     if (isNaN(variable1) &amp;&amp; isNaN(variable2)) {
+        console.log(solicitudVariable1);
         await post('devolverVariable', solicitudVariable1)
             .then(response => response.text())
             .then(body => {
                 imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
                 variable1 = JSON.parse(body).valor;
             });
+        console.log(solicitudVariable2);
         await post('devolverVariable', solicitudVariable2)
             .then(response => response.text())
             .then(body => {
@@ -965,6 +1051,7 @@ const realizarOperación = async(texto, operador) => {
                 variable2 = JSON.parse(body).valor;
             });
     } else if (isNaN(variable1) &amp;&amp; !isNaN(variable2)) {
+        console.log(solicitudVariable1);
         await post('devolverVariable', solicitudVariable1)
             .then(response => response.text())
             .then(body => {
@@ -972,6 +1059,7 @@ const realizarOperación = async(texto, operador) => {
                 variable1 = JSON.parse(body).valor;
             });
     } else if (!isNaN(variable1) &amp;&amp; isNaN(variable2)) {
+        console.log(solicitudVariable2);
         await post('devolverVariable', solicitudVariable2)
             .then(response => response.text())
             .then(body => {
@@ -1154,13 +1242,13 @@ const isString = string => {
 </div>
 
 <nav>
-    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="char.html">char</a></li><li><a href="double.html">double</a></li><li><a href="float.html">float</a></li><li><a href="int.html">int</a></li><li><a href="long.html">long</a></li><li><a href="reference.html">reference</a></li><li><a href="struct.html">struct</a></li><li><a href="tipoDeDato.html">tipoDeDato</a></li></ul><h3>Global</h3><ul><li><a href="global.html#actualizarRamLiveView">actualizarRamLiveView</a></li><li><a href="global.html#arrayToString">arrayToString</a></li><li><a href="global.html#clonarEstadoRamLiveView">clonarEstadoRamLiveView</a></li><li><a href="global.html#crearChar">crearChar</a></li><li><a href="global.html#crearNumero">crearNumero</a></li><li><a href="global.html#crearReferencia">crearReferencia</a></li><li><a href="global.html#crearStruct">crearStruct</a></li><li><a href="global.html#detenerEjecucion">detenerEjecucion</a></li><li><a href="global.html#eliminarScopeRamView">eliminarScopeRamView</a></li><li><a href="global.html#imprimirLog">imprimirLog</a></li><li><a href="global.html#imprimirStdOut">imprimirStdOut</a></li><li><a href="global.html#isString">isString</a></li><li><a href="global.html#limpiarVentana">limpiarVentana</a></li><li><a href="global.html#post">post</a></li><li><a href="global.html#procesadoInicial">procesadoInicial</a></li><li><a href="global.html#procesarLinea">procesarLinea</a></li><li><a href="global.html#procesarStruct">procesarStruct</a></li><li><a href="global.html#procesarTexto">procesarTexto</a></li><li><a href="global.html#realizarOperaci%25C3%25B3n">realizarOperación</a></li><li><a href="global.html#reasignarVariable">reasignarVariable</a></li><li><a href="global.html#reasignarVariableEnStruct">reasignarVariableEnStruct</a></li><li><a href="global.html#removerTodasLasOcurrencias">removerTodasLasOcurrencias</a></li><li><a href="global.html#solicitarDireccionDeMemoria">solicitarDireccionDeMemoria</a></li><li><a href="global.html#solicitarValorApuntado">solicitarValorApuntado</a></li><li><a href="global.html#validarTipoDeDato">validarTipoDeDato</a></li><li><a href="global.html#verificarConexion">verificarConexion</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="char.html">char</a></li><li><a href="double.html">double</a></li><li><a href="float.html">float</a></li><li><a href="int.html">int</a></li><li><a href="long.html">long</a></li><li><a href="reference.html">reference</a></li><li><a href="struct.html">struct</a></li><li><a href="tipoDeDato.html">tipoDeDato</a></li></ul><h3>Global</h3><ul><li><a href="global.html#actualizarRamLiveView">actualizarRamLiveView</a></li><li><a href="global.html#arrayToString">arrayToString</a></li><li><a href="global.html#clonarEstadoRamLiveView">clonarEstadoRamLiveView</a></li><li><a href="global.html#crearChar">crearChar</a></li><li><a href="global.html#crearNumero">crearNumero</a></li><li><a href="global.html#crearReferencia">crearReferencia</a></li><li><a href="global.html#crearStruct">crearStruct</a></li><li><a href="global.html#detenerEjecucion">detenerEjecucion</a></li><li><a href="global.html#eliminarScopeRamView">eliminarScopeRamView</a></li><li><a href="global.html#imprimirLog">imprimirLog</a></li><li><a href="global.html#imprimirStdOut">imprimirStdOut</a></li><li><a href="global.html#isString">isString</a></li><li><a href="global.html#limpiarVentana">limpiarVentana</a></li><li><a href="global.html#post">post</a></li><li><a href="global.html#procesadoInicial">procesadoInicial</a></li><li><a href="global.html#procesarLinea">procesarLinea</a></li><li><a href="global.html#procesarStruct">procesarStruct</a></li><li><a href="global.html#procesarTexto">procesarTexto</a></li><li><a href="global.html#realizarOperaci%25C3%25B3n">realizarOperación</a></li><li><a href="global.html#reasignarVariable">reasignarVariable</a></li><li><a href="global.html#reasignarVariableEnStruct">reasignarVariableEnStruct</a></li><li><a href="global.html#removerTodasLasOcurrencias">removerTodasLasOcurrencias</a></li><li><a href="global.html#solicitarAtributoEnStruct">solicitarAtributoEnStruct</a></li><li><a href="global.html#solicitarDireccionDeMemoria">solicitarDireccionDeMemoria</a></li><li><a href="global.html#solicitarValorApuntado">solicitarValorApuntado</a></li><li><a href="global.html#validarTipoDeDato">validarTipoDeDato</a></li><li><a href="global.html#verificarConexion">verificarConexion</a></li></ul>
 </nav>
 
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Tue Apr 27 2021 11:43:54 GMT-0600 (GMT-06:00)
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Wed May 05 2021 01:26:45 GMT-0600 (hora estándar central)
 </footer>
 
 <script> prettyPrint(); </script>

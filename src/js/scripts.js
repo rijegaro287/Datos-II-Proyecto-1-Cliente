@@ -212,10 +212,15 @@ const verificarConexion = async() => {
         descripcion: 'Conectando...'
     };
 
-    await post('conexionInicial', solicitudDeInicio)
-        .then(response => response.text())
-        .then(body =>
-            imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`));
+    try {
+        await post('conexionInicial', solicitudDeInicio)
+            .then(response => response.text())
+            .then(body =>
+                imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`));
+
+    } catch (error) {
+        await detenerEjecucion();
+    }
 }
 
 /**
@@ -225,10 +230,14 @@ const detenerEjecucion = async() => {
     const solicitudDeFinalizacion = {
         descripcion: 'Finalizando ejecución...'
     };
-    await post('finalizarEjecucion', solicitudDeFinalizacion)
-        .then(response => response.text())
-        .then(body =>
-            imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`));
+    try {
+        await post('finalizarEjecucion', solicitudDeFinalizacion)
+            .then(response => response.text())
+            .then(body =>
+                imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`));
+    } catch (error) {
+        imprimirLog(error, true, false);
+    }
 
     runningButtons.style.display = 'none';
     runButton.style.display = 'block';
@@ -246,8 +255,9 @@ const detenerEjecucion = async() => {
  * Imprime el texto en la sección de Log del IDE. Si error = true, el mensaje se muestra en rojo
  * @param {string} texto El mensaje que se desea mostrar en el Log
  * @param {boolean} error Indica si el mensaje es un error
+ * @param {boolean} finalizarEjecucion Indica si es necesario finalizar la ejecución tras mostrar el error
  */
-const imprimirLog = async(texto, error = false) => {
+const imprimirLog = async(texto, error = false, finalizarEjecucion = true) => {
     let etiqueta = document.createElement('p');
     let textoEtiqueta = document.createTextNode(texto);
     etiqueta.appendChild(textoEtiqueta);
@@ -259,7 +269,9 @@ const imprimirLog = async(texto, error = false) => {
         mensajesLog.style.display = 'block';
         pestanaLog.style.backgroundColor = 'rgba(0, 0, 0, 0.4)';
         pestanaStdOut.style.backgroundColor = 'inherit';
-        await detenerEjecucion();
+        if (finalizarEjecucion) {
+            await detenerEjecucion();
+        }
     } else {
         etiqueta.style.color = 'yellow';
     }
@@ -291,6 +303,7 @@ const imprimirStdOut = async(texto) => {
         variable = {
             nombre: texto
         }
+        console.log(variable);
         await post('devolverVariable', variable)
             .then(response => response.text())
             .then(body => {
@@ -299,6 +312,7 @@ const imprimirStdOut = async(texto) => {
             });
     }
     recorridoLineaALinea.push(`print:${variable}`)
+    return;
 }
 
 
@@ -494,6 +508,7 @@ const procesarTexto = async(texto, posicionInicial) => {
                 });
             posicionEnTexto += 1
             scopeCerrado = true;
+
         } else if (caracter === '{' && informacion[0] === 'struct') {
             informacion.push(palabra);
             posicionEnTexto += 1;
@@ -515,7 +530,6 @@ const procesarTexto = async(texto, posicionInicial) => {
     if (!scopeCerrado && !structCerrado) {
         throw ('Error: falta ";" al final de una línea');
     }
-
 }
 
 /**
@@ -524,6 +538,7 @@ const procesarTexto = async(texto, posicionInicial) => {
  * @returns El resultado de ejecutar la línea
  */
 const procesarLinea = async(informacion) => {
+    console.log(informacion);
     for (let i = 0; i < informacion.length; i++) {
         let elemento = [...informacion[i]];
         informacion[i] = arrayToString(removerTodasLasOcurrencias(elemento, ' '), false);
@@ -531,9 +546,9 @@ const procesarLinea = async(informacion) => {
     const ultimaPalabra = informacion[informacion.length - 1];
 
     try {
-        if (informacion[3] !== undefined && isNaN(informacion[3]) && !informacion[3].includes('.')) {
+        if (informacion.length === 4 && informacion[3] !== undefined && isNaN(informacion[3]) && !informacion[3].includes('.') && !informacion[3].includes('"')) {
             solicitudDeVariable = {
-                nombre: informacion[3]
+                nombre: informacion[3].replace(/['"]+/g, '')
             }
             await post('devolverVariable', solicitudDeVariable)
                 .then(response => response.text())
@@ -543,13 +558,12 @@ const procesarLinea = async(informacion) => {
                     if (isNaN(informacion[3]) && informacion[3].length === 1) {
                         informacion[3] = `"${informacion[3]}"`;
                     }
+                    console.log(informacion[3]);
                 });
         }
     } catch (error) {}
 
-    if (informacion.length > 4 || (informacion[0].includes('print(') && ultimaPalabra[ultimaPalabra.length - 1] !== ')')) {
-        throw ('Error: falta ";" al final de una línea');
-    } else if (informacion[0].slice(0, 6) + ultimaPalabra[ultimaPalabra.length - 1] === 'print()') {
+    if (informacion[0].slice(0, 6) + ultimaPalabra[ultimaPalabra.length - 1] === 'print()') {
         informacionString = arrayToString(informacion);
         return imprimirStdOut(informacionString.slice(7, informacionString.length - 1));
     } else if (informacion[1] === '=' && informacion.length === 3) {
@@ -847,6 +861,7 @@ const reasignarVariable = async(informacion) => {
     let variableACambiar = {
         nombre: informacion[0]
     }
+    console.log(variableACambiar);
     await post('devolverVariable', variableACambiar)
         .then(response => response.text())
         .then(body => {
@@ -915,6 +930,7 @@ const reasignarVariable = async(informacion) => {
         let nuevoValor = {
             nombre: informacion[2]
         }
+        console.log(nuevoValor);
         await post('devolverVariable', nuevoValor)
             .then(response => response.text())
             .then(body => {
@@ -992,12 +1008,14 @@ const realizarOperación = async(texto, operador) => {
     }
 
     if (isNaN(variable1) && isNaN(variable2)) {
+        console.log(solicitudVariable1);
         await post('devolverVariable', solicitudVariable1)
             .then(response => response.text())
             .then(body => {
                 imprimirLog(`POST enviado. \n Respuesta recibida: ${body}`);
                 variable1 = JSON.parse(body).valor;
             });
+        console.log(solicitudVariable2);
         await post('devolverVariable', solicitudVariable2)
             .then(response => response.text())
             .then(body => {
@@ -1005,6 +1023,7 @@ const realizarOperación = async(texto, operador) => {
                 variable2 = JSON.parse(body).valor;
             });
     } else if (isNaN(variable1) && !isNaN(variable2)) {
+        console.log(solicitudVariable1);
         await post('devolverVariable', solicitudVariable1)
             .then(response => response.text())
             .then(body => {
@@ -1012,6 +1031,7 @@ const realizarOperación = async(texto, operador) => {
                 variable1 = JSON.parse(body).valor;
             });
     } else if (!isNaN(variable1) && isNaN(variable2)) {
+        console.log(solicitudVariable2);
         await post('devolverVariable', solicitudVariable2)
             .then(response => response.text())
             .then(body => {

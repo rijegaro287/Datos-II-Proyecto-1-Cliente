@@ -21,5 +21,8 @@
         "electron": "^12.0.2",
         "electron-reload": "^1.5.0",
         "mathjs": "^9.3.0"
+    },
+    "devDependencies": {
+        "jsdoc": "^3.6.6"
     }
 }
